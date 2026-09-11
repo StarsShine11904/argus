@@ -11,7 +11,8 @@ import org.jspecify.annotations.Nullable;
  * Per-block Sodium render context prepared by Argus's model-emitter bridge.
  *
  * <p>The plan stores stable values that are identical for every quad emitted
- * by one block model. Per-quad scratch remains in {@link ArgusSodiumQuadPipeline}.
+ * by one block model. Per-quad scratch remains in the Sodium block-renderer
+ * integration.
  *
  * <p>Threading: one instance is used only for the current section-build worker
  * call stack.

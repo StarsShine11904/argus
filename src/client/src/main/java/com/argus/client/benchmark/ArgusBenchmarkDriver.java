@@ -576,9 +576,7 @@ public final class ArgusBenchmarkDriver {
         reportWritten = true;
         Instant now = Instant.now();
         String loader = property("argus.benchmark.loader", "unknown");
-        String mode = Boolean.getBoolean("argus.sodium.modelEmitter.disabled")
-                ? "legacy-process-quad"
-                : "platform-model-emitter";
+        String mode = "process-quad";
         String runLabel = property("argus.benchmark.runLabel",
                 loader + "-" + mode);
         Path reportDir = reportDirectory(minecraft);

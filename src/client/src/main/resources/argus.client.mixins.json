@@ -46,7 +46,6 @@
     "RenderLayerEntityTextureMixin",
     "SodiumBlockRendererCtmMixin",
     "SodiumLevelColorCacheCustomColorsMixin",
-    "SodiumPlatformModelEmitterMixin",
     "SkyRendererCustomSkyMixin",
     "SkyRendererDetailsMixin",
     "SpriteContentsAnimationDetailsMixin",

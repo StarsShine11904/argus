@@ -189,7 +189,6 @@ def argusBenchmarkProperties = [
         'argus.benchmark.configFile',
         'argus.benchmark.reportDir',
         'argus.benchmark.runLabel',
-        'argus.sodium.modelEmitter.disabled',
 ]
 
 def copyBenchmarkTemplate = { String source, File target ->
