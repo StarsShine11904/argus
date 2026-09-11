@@ -31,6 +31,10 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Read Minecraft version
+        run: |
+          echo "MINECRAFT_VERSION=$(sed -n 's/^minecraft_version=//p' gradle.properties)" >> "$GITHUB_ENV"
+
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
@@ -53,7 +57,7 @@ jobs:
       - name: Upload loader artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: argus-loader-jars-${{ github.sha }}
+          name: argus-loader-jars-mc${{ env.MINECRAFT_VERSION }}-${{ github.sha }}
           path: build/release-artifacts/*.jar
           if-no-files-found: error
 

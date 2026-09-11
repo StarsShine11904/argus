@@ -38,10 +38,10 @@ version = project.mod_version
 group = project.maven_group
 
 base {
-    // Keep release artifacts loader-specific; Gradle appends
-    // `-${version}` automatically, producing names like
-    // `argus-fabric-<version>.jar`.
-    archivesName = "${project.mod_id}-fabric"
+    // Keep release artifacts loader-specific and put the Minecraft target
+    // before Gradle's trailing mod version:
+    // `argus-fabric-mc<minecraft-version>-<mod-version>.jar`.
+    archivesName = "${project.mod_id}-fabric-mc${project.minecraft_version}"
 }
 
 loom {

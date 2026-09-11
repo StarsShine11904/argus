@@ -84,7 +84,7 @@ allprojects {
         // Add a tiny machine-readable marker so anyone can tell at a glance which version they have.
         manifest {
             attributes([
-                'Argus-Version'   : project.version,
+                'Argus-Version'   : project.mod_version,
                 'Argus-Group'     : project.group,
                 'Built-By'         : 'Gradle'
             ])
