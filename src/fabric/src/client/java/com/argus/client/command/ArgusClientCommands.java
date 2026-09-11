@@ -22,6 +22,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -35,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -53,14 +55,17 @@ import java.util.Optional;
  *
  * <h2>Performance</h2>
  *
- * <p>Debug-only path. It can scan many blocks and write many log lines; do not
- * call it during performance measurements.
+ * <p>Debug-only path. Block scans are bounded by hard work and output limits
+ * so malformed input or common blocks cannot stall the render thread or flood
+ * the game log.
  */
 public final class ArgusClientCommands {
 
     private static final Logger LOGGER =
             LoggerFactory.getLogger("argus/ctm-command");
     private static final Direction[] DIRECTIONS = Direction.values();
+    private static final int MAX_SCANNED_BLOCKS = 262_144;
+    private static final int MAX_LOGGED_BLOCKS = 128;
 
     private ArgusClientCommands() {
     }
@@ -78,18 +83,30 @@ public final class ArgusClientCommands {
                                                         logOverlaySection(
                                                                 ctx.getSource())))
                                         .then(ClientCommands.argument(
-                                                        "blocktype",
+                                                        "block",
                                                         StringArgumentType.word())
+                                                .suggests((ctx, builder) ->
+                                                        SharedSuggestionProvider
+                                                                .suggestResource(
+                                                                        BuiltInRegistries
+                                                                                .BLOCK
+                                                                                .keySet(),
+                                                                        builder))
                                                 .executes(ctx -> logBlockTextures(
                                                         ctx.getSource(),
                                                         StringArgumentType
                                                                 .getString(ctx,
-                                                                        "blocktype"))))))));
+                                                                        "block"))))))));
     }
 
     private static int logBlockTextures(FabricClientCommandSource source,
                                         String blockType) {
         Identifier blockId = parseBlockId(blockType);
+        if (blockId == null) {
+            source.sendError(Component.literal(
+                    "[Argus] Invalid block ID: " + blockType));
+            return 0;
+        }
         if (!BuiltInRegistries.BLOCK.containsKey(blockId)) {
             source.sendError(Component.literal(
                     "[Argus] Unknown block: " + blockType
@@ -110,11 +127,72 @@ public final class ArgusClientCommands {
         int centerChunkZ = center.getZ() >> 4;
         int minY = level.getMinY();
         int maxY = level.getMaxY();
+        int centerSectionY = center.getY() >> 4;
         ScanScratch scratch = new ScanScratch();
         int found = 0;
+        int scanned = 0;
+        boolean limited = false;
+        ArrayList<ScanSection> sections = scanSections(level, centerChunkX,
+                centerSectionY, centerChunkZ, renderDistance, minY, maxY);
         LOGGER.info("[argus] CTM face texture/selection scan begin block={} "
-                        + "center={} renderDistance={} y={}..{}",
-                blockId, center, renderDistance, minY, maxY - 1);
+                        + "center={} renderDistance={} sections={} "
+                        + "scanLimit={} logLimit={}",
+                blockId, center, renderDistance, sections.size(),
+                MAX_SCANNED_BLOCKS, MAX_LOGGED_BLOCKS);
+        scan:
+        for (ScanSection section : sections) {
+            int sectionMinX = section.chunkX() << 4;
+            int sectionMinY = Math.max(section.sectionY() << 4, minY);
+            int sectionMaxY = Math.min((section.sectionY() + 1) << 4,
+                    maxY);
+            int sectionMinZ = section.chunkZ() << 4;
+            for (int y = sectionMinY; y < sectionMaxY; y++) {
+                for (int z = sectionMinZ; z < sectionMinZ + 16; z++) {
+                    for (int x = sectionMinX; x < sectionMinX + 16; x++) {
+                        if (scanned >= MAX_SCANNED_BLOCKS
+                                || found >= MAX_LOGGED_BLOCKS) {
+                            limited = true;
+                            break scan;
+                        }
+                        scanned++;
+                        scratch.pos.set(x, y, z);
+                        BlockState state = level.getBlockState(scratch.pos);
+                        if (state.getBlock() != block) {
+                            continue;
+                        }
+                        found++;
+                        LOGGER.info("[argus] CTM face texture/selection block={} "
+                                        + "pos={} state={} faces={}",
+                                blockId,
+                                scratch.pos,
+                                state,
+                                describeFaces(client, level, scratch.pos,
+                                        state, scratch));
+                    }
+                }
+            }
+        }
+        LOGGER.info("[argus] CTM face texture/selection scan end block={} "
+                        + "logged={} scanned={} limited={}",
+                blockId, found, scanned, limited);
+        source.sendFeedback(Component.literal(
+                "[Argus] Logged " + found + " " + blockId
+                        + " blocks after scanning " + scanned
+                        + (limited ? " (stopped at safety limit)" : "")));
+        return found;
+    }
+
+    private static ArrayList<ScanSection> scanSections(
+            ClientLevel level,
+            int centerChunkX,
+            int centerSectionY,
+            int centerChunkZ,
+            int renderDistance,
+            int minY,
+            int maxY) {
+        int minSectionY = minY >> 4;
+        int maxSectionY = (maxY - 1) >> 4;
+        ArrayList<ScanSection> sections = new ArrayList<>();
         for (int chunkZ = centerChunkZ - renderDistance;
              chunkZ <= centerChunkZ + renderDistance; chunkZ++) {
             for (int chunkX = centerChunkX - renderDistance;
@@ -122,35 +200,18 @@ public final class ArgusClientCommands {
                 if (!level.hasChunk(chunkX, chunkZ)) {
                     continue;
                 }
-                int minX = chunkX << 4;
-                int minZ = chunkZ << 4;
-                for (int y = minY; y < maxY; y++) {
-                    for (int z = minZ; z < minZ + 16; z++) {
-                        for (int x = minX; x < minX + 16; x++) {
-                            scratch.pos.set(x, y, z);
-                            BlockState state = level.getBlockState(scratch.pos);
-                            if (state.getBlock() != block) {
-                                continue;
-                            }
-                            found++;
-                            LOGGER.info("[argus] CTM face texture/selection block={} "
-                                            + "pos={} state={} faces={}",
-                                    blockId,
-                                    scratch.pos,
-                                    state,
-                                    describeFaces(client, level, scratch.pos,
-                                            state, scratch));
-                        }
-                    }
+                for (int sectionY = minSectionY;
+                     sectionY <= maxSectionY; sectionY++) {
+                    int dx = chunkX - centerChunkX;
+                    int dy = sectionY - centerSectionY;
+                    int dz = chunkZ - centerChunkZ;
+                    sections.add(new ScanSection(chunkX, sectionY, chunkZ,
+                            dx * dx + dy * dy + dz * dz));
                 }
             }
         }
-        LOGGER.info("[argus] CTM face texture/selection scan end block={} found={}",
-                blockId, found);
-        source.sendFeedback(Component.literal(
-                "[Argus] Logged " + found + " " + blockId
-                        + " blocks in render distance"));
-        return found;
+        sections.sort(Comparator.comparingInt(ScanSection::distanceSquared));
+        return sections;
     }
 
     private static int logOverlaySection(FabricClientCommandSource source) {
@@ -266,12 +327,10 @@ public final class ArgusClientCommands {
         return hits;
     }
 
+    @Nullable
     private static Identifier parseBlockId(String raw) {
         String value = raw.indexOf(':') < 0 ? "minecraft:" + raw : raw;
-        Identifier parsed = Identifier.tryParse(value);
-        return parsed == null
-                ? Identifier.fromNamespaceAndPath("minecraft", raw)
-                : parsed;
+        return Identifier.tryParse(value);
     }
 
     private static String describeFaces(Minecraft client,
@@ -792,6 +851,12 @@ public final class ArgusClientCommands {
     private static String blockIdOf(BlockState state) {
         Identifier id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
         return id == null ? "" : id.toString();
+    }
+
+    private record ScanSection(int chunkX,
+                               int sectionY,
+                               int chunkZ,
+                               int distanceSquared) {
     }
 
     private static final class ScanScratch implements ListStorage {
