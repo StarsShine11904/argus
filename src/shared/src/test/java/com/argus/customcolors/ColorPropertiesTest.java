@@ -63,6 +63,41 @@ class ColorPropertiesTest {
     }
 
     @Test
+    void colormapPropertiesInferBlockFromFilename() {
+        ColormapRule rule = ColorProperties.parseColormapProperties("",
+                "minecraft:optifine/colormap/blocks/cyan_terracotta.properties");
+
+        assertEquals(ColormapFormat.VANILLA, rule.format());
+        assertEquals(1, rule.blocks().length);
+        assertEquals("minecraft:cyan_terracotta",
+                rule.blocks()[0].toString());
+        assertEquals(new NamespaceId("minecraft",
+                "optifine/colormap/blocks/cyan_terracotta.png"),
+                rule.source());
+    }
+
+    @Test
+    void pngOnlyColormapInfersBlockAndSource() {
+        ColormapRule rule = ColorProperties.parseImplicitColormap(
+                "minecraft:optifine/colormap/blocks/cyan_wool.png");
+
+        assertEquals(ColormapFormat.VANILLA, rule.format());
+        assertEquals("minecraft:cyan_wool", rule.blocks()[0].toString());
+        assertEquals(new NamespaceId("minecraft",
+                "optifine/colormap/blocks/cyan_wool.png"), rule.source());
+    }
+
+    @Test
+    void fixedColormapWithoutColorDefaultsToWhite() {
+        ColormapRule rule = ColorProperties.parseColormapProperties(
+                "format=fixed\nblocks=minecraft:white_wool",
+                "minecraft:optifine/colormap/blocks/white_wool.properties");
+
+        assertTrue(rule.hasFixedColor());
+        assertEquals(0xFFFFFF, rule.fixedColor());
+    }
+
+    @Test
     void colormapImageSamplesVanillaGridAndFixed() {
         ColormapImage image = new ColormapImage(4, 4, new int[]{
                 0, 1, 2, 3,

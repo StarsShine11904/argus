@@ -64,20 +64,38 @@ public final class ColorProperties {
         PropertiesFile props = parse(body);
         NamespaceId parent = parentOf(sourceFile);
         ColormapFormat format = ColormapFormat.parse(
-                props.get("format"), ColormapFormat.GRID);
+                props.get("format"), ColormapFormat.VANILLA);
         NamespaceId source = props.get("source") == null
                 ? defaultPngFor(sourceFile)
                 : ResourcePath.resolveOptifine(
                         stripPng(props.get("source")), "minecraft", parent);
         BlockSpec[] blocks = parseBlocks(props.get("blocks"));
-        Integer fixedColor = parseRgb(props.get("color"));
-        Integer itemColor = parseRgb(props.get("color"));
+        if (blocks.length == 0) {
+            blocks = defaultBlocksFor(sourceFile);
+        }
+        Integer parsedColor = parseRgb(props.get("color"));
+        Integer fixedColor = format == ColormapFormat.FIXED
+                ? (parsedColor == null ? 0xFFFFFF : parsedColor)
+                : null;
+        Integer itemColor = parsedColor;
         int yVariance = parseInt(props.get("yVariance"), 0, 0,
                 Integer.MAX_VALUE, "yVariance");
         int yOffset = parseInt(props.get("yOffset"), 0,
                 Integer.MIN_VALUE, Integer.MAX_VALUE, "yOffset");
         return new ColormapRule(sourceFile, source, format, blocks,
                 fixedColor, yVariance, yOffset, itemColor);
+    }
+
+    /**
+     * Builds the OptiFine shorthand rule for a PNG in
+     * {@code optifine/colormap/blocks} (or the legacy {@code custom}
+     * directory) that has no companion properties file. The image filename
+     * identifies the target block and the default colormap format is vanilla.
+     */
+    public static ColormapRule parseImplicitColormap(String sourceFile) {
+        NamespaceId source = NamespaceId.parse(sourceFile);
+        return new ColormapRule(sourceFile, source, ColormapFormat.VANILLA,
+                defaultBlocksFor(sourceFile), null, 0, 0, null);
     }
 
     private static void parsePaletteBlock(String key,
@@ -124,6 +142,21 @@ public final class ColorProperties {
             out[i] = BlockSpec.parse(tokens[i]);
         }
         return out;
+    }
+
+    private static BlockSpec[] defaultBlocksFor(String sourceFile) {
+        NamespaceId id = NamespaceId.parse(sourceFile);
+        String path = id.path();
+        int slash = path.lastIndexOf('/');
+        String name = slash < 0 ? path : path.substring(slash + 1);
+        int dot = name.lastIndexOf('.');
+        if (dot > 0) {
+            name = name.substring(0, dot);
+        }
+        if (name.isBlank()) {
+            return new BlockSpec[0];
+        }
+        return new BlockSpec[]{BlockSpec.parse(id.namespace() + ":" + name)};
     }
 
     public static Integer parseRgb(String raw) {

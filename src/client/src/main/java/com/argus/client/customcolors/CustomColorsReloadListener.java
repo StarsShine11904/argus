@@ -26,8 +26,10 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -44,7 +46,10 @@ public final class CustomColorsReloadListener implements PreparableReloadListene
     private static final Identifier COLOR_PROPERTIES =
             Identifier.fromNamespaceAndPath("minecraft",
                     "optifine/color.properties");
-    private static final String COLORMAP_FOLDER = "optifine/colormap";
+    private static final String[] BLOCK_COLORMAP_FOLDERS = {
+            "optifine/colormap/blocks",
+            "optifine/colormap/custom"
+    };
     private static final String[] SPECIAL_COLORMAPS = {
             "grass", "foliage", "water", "redstone", "pumpkinstem",
             "melonstem", "lavadrop", "myceliumparticle", "xporb",
@@ -151,10 +156,14 @@ public final class CustomColorsReloadListener implements PreparableReloadListene
     private static ArrayList<ColormapRule> loadBlockColormapProperties(
             ResourceManager resourceManager) {
         ArrayList<ColormapRule> out = new ArrayList<>();
-        for (Identifier loc : resourceManager
-                .listResources(COLORMAP_FOLDER,
-                        id -> id.getPath().endsWith(".properties"))
-                .keySet()) {
+        Set<Identifier> propertyFiles = new LinkedHashSet<>();
+        for (String folder : BLOCK_COLORMAP_FOLDERS) {
+            propertyFiles.addAll(resourceManager
+                    .listResources(folder,
+                            id -> id.getPath().endsWith(".properties"))
+                    .keySet());
+        }
+        for (Identifier loc : propertyFiles) {
             try (var in = resourceManager.getResource(loc)
                     .orElseThrow().open();
                  var reader = new InputStreamReader(
@@ -169,7 +178,33 @@ public final class CustomColorsReloadListener implements PreparableReloadListene
                         Constants.MOD_NAME, loc, e.getMessage());
             }
         }
+        for (String folder : BLOCK_COLORMAP_FOLDERS) {
+            for (Identifier loc : resourceManager
+                    .listResources(folder,
+                            id -> id.getPath().endsWith(".png"))
+                    .keySet()) {
+                Identifier properties = Identifier.fromNamespaceAndPath(
+                        loc.getNamespace(), replaceExtension(
+                                loc.getPath(), ".properties"));
+                if (propertyFiles.contains(properties)) {
+                    continue;
+                }
+                try {
+                    out.add(ColorProperties.parseImplicitColormap(
+                            loc.toString()));
+                } catch (RuntimeException e) {
+                    LOGGER.warn("[{}] skipping malformed implicit colormap "
+                                    + "{}: {}",
+                            Constants.MOD_NAME, loc, e.getMessage());
+                }
+            }
+        }
         return out;
+    }
+
+    private static String replaceExtension(String path, String extension) {
+        int dot = path.lastIndexOf('.');
+        return (dot < 0 ? path : path.substring(0, dot)) + extension;
     }
 
     private static Optional<ColormapImage> decode(ResourceManager manager,
