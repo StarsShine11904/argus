@@ -18,7 +18,7 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
  * texture sampling are unchanged; only the texture identifier may change.
  *
  * <p>Compatibility: risk is low to medium. The hook targets the private
- * direct-texture blit funnel in Minecraft 26.2 and uses {@code require = 0}
+ * direct-texture blit funnel in Minecraft 26.3 and uses {@code require = 0}
  * so missing signatures fail safe.
  */
 @Mixin(GuiGraphicsExtractor.class)

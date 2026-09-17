@@ -269,7 +269,6 @@ public abstract class SodiumBlockRendererCtmMixin
             int light = plan.overlayLight(i);
             if (light >= 0) {
                 overlayQuad.setEmissive(true);
-                overlayQuad.setDiffuseShade(false);
                 overlayQuad.setAmbientOcclusion(TriState.FALSE);
                 for (int vertex = 0; vertex < 4; vertex++) {
                     overlayQuad.setLight(vertex, light);

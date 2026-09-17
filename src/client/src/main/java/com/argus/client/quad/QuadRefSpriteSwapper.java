@@ -108,8 +108,10 @@ public final class QuadRefSpriteSwapper {
                 target,
                 oldInfo.layer(),
                 oldInfo.itemRenderType(),
+                oldInfo.itemGlintRenderType(),
+                oldInfo.itemGlintSpecialRenderType(),
                 oldInfo.tintIndex(),
-                oldInfo.shade(),
+                oldInfo.shadeDirectionOverride(),
                 oldInfo.lightEmission());
         return new BakedQuad(
                 in.position0(), in.position1(), in.position2(), in.position3(),

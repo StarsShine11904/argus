@@ -56,7 +56,7 @@ For detailed phase status, see `plan/roadmap.md`.
 
 ## Requirements
 
-- Minecraft `26.2`
+- Minecraft `26.3`
 - Java 25
 - Sodium
 - Fabric Loader + Fabric API, or NeoForge

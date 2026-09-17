@@ -33,6 +33,7 @@
     "ItemModelResolverCitMixin",
     "ItemPotionTintCustomColorsMixin",
     "ItemStackRenderStateAccessor",
+    "ItemStackRenderStateLayerAccessor",
     "MapColorCustomColorsMixin",
     "MultiPlayerGameModeCustomGuiMixin",
     "LevelRendererDetailsMixin",

@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
  * replace only sprite/material references for texture-only CIT rules.
  *
  * <p>Risk: low. Read-only access to layer array/count; Argus mutates each
- * layer through the public {@code prepareQuadList()} API.
+ * layer through the public {@code setQuads(ItemQuads)} API.
  */
 @Mixin(ItemStackRenderState.class)
 public interface ItemStackRenderStateAccessor {

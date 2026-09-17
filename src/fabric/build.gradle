@@ -15,7 +15,7 @@
 // `plugins { id ... }` block, because the Loom artifact on
 // `https://maven.fabricmc.net/` is published as a regular module, not
 // as a Gradle marker plugin. The classpath form resolves
-// `1.16-SNAPSHOT` reliably without a `pluginManagement` override.
+// `1.17.20` reliably without a `pluginManagement` override.
 
 buildscript {
     repositories {

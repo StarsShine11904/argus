@@ -2,17 +2,17 @@ package com.argus.client.customsky;
 
 import com.argus.customsky.CustomSkyLayer;
 import com.argus.customsky.CustomSkyRotation;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.BlendFactor;
-import com.mojang.blaze3d.PrimitiveTopology;
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.BlendFactor;
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -84,10 +84,11 @@ public final class CustomSkyRenderer {
                 .createRenderPass(() -> "Argus custom sky",
                         colorTexture, Optional.empty(),
                         depthTexture, OptionalDouble.empty())) {
-            renderPass.setPipeline(pipeline(layer.rule()));
+            renderPass.setPipeline(RenderSystem.getCompiledPipeline(
+                    pipeline(layer.rule())));
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.bindTexture("Sampler0", texture.getTextureView(),
+            renderPass.setUniform("Sampler0", texture.getTextureView(),
                     texture.getSampler());
             renderPass.setVertexBuffer(0, buffer.slice());
             renderPass.setIndexBuffer(indexBuffer, indices.type());
@@ -116,7 +117,7 @@ public final class CustomSkyRenderer {
             com.argus.customsky.CustomSkyBlendMode blendMode) {
         RenderPipeline.Builder builder = RenderPipeline.builder()
                 .withBindGroupLayout(BindGroupLayouts.GLOBALS)
-                .withBindGroupLayout(BindGroupLayouts.MATRICES_PROJECTION)
+                .withBindGroupLayout(BindGroupLayouts.PROJECTION)
                 .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
                 .withLocation(Identifier.fromNamespaceAndPath("argus",
                         "pipeline/custom_sky_" + blendMode.name()

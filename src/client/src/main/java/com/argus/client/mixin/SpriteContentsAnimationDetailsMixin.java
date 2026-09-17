@@ -2,7 +2,7 @@ package com.argus.client.mixin;
 
 import com.argus.config.ArgusConfig;
 import com.argus.config.ArgusConfigHolder;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import net.minecraft.client.renderer.texture.SpriteContents;
 import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Final;

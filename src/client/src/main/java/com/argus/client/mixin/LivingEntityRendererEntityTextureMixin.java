@@ -73,7 +73,7 @@ public abstract class LivingEntityRendererEntityTextureMixin<
         nodes.submitModel(this.model, state, poseStack,
                 RenderTypes.entityTranslucentEmissive(emissive),
                 ARGUS_FULL_BRIGHT_LIGHT, OverlayTexture.NO_OVERLAY,
-                -1, null, state.outlineColor, null);
+                -1, null, state.outlineColor);
     }
 
     private Identifier argus$currentEntityTexture(S state) {

@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Emits Argus-owned HUD text into Mojang's 26.2 GUI extraction path.
+ * Emits Argus-owned HUD text into Mojang's 26.3 GUI extraction path.
  *
  * <p>Threading: called on the client render thread. All config reads come from
  * immutable snapshots.

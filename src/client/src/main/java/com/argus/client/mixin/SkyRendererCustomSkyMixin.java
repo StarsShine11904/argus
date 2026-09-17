@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Target: {@link SkyRenderer#renderSunMoonAndStars}.
  *
  * <p>Purpose: render Argus Custom Sky layers after vanilla sun/moon/stars and
- * before the dark-disc pass in Mojang's 26.2 sky FrameGraph path. Vanilla
+ * before the dark-disc pass in Mojang's 26.3 sky FrameGraph path. Vanilla
  * sky rendering is preserved; missing hooks fail safe because this injection
  * is additive and does not overwrite the method.
  *

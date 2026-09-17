@@ -15,6 +15,7 @@ import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.client.resources.model.geometry.ItemQuads;
 import net.minecraft.client.model.geom.builders.UVPair;
 import net.minecraft.data.AtlasIds;
 import net.minecraft.resources.Identifier;
@@ -32,7 +33,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.List;
 
 /**
- * CIT hook for Mojang's 26.2 item model path.
+ * CIT hook for Mojang's 26.3 item model path.
  *
  * <p>Target: {@link ItemModelResolver#appendItemLayers}. Purpose: select a
  * Argus CIT rule after the cheap item prefilter and realize it either by
@@ -107,11 +108,23 @@ public abstract class ItemModelResolverCitMixin {
         ItemStackRenderState.LayerRenderState[] layers =
                 accessor.argus$layers();
         for (int i = 0; i < accessor.argus$activeLayerCount(); i++) {
-            List<BakedQuad> quads = layers[i].prepareQuadList();
-            for (int q = 0; q < quads.size(); q++) {
-                quads.set(q, remapQuad(quads.get(q), target));
-            }
+            ItemStackRenderStateLayerAccessor layerAccessor =
+                    (ItemStackRenderStateLayerAccessor) layers[i];
+            ItemQuads oldQuads = layerAccessor.argus$quads();
+            layerAccessor.argus$setQuads(new ItemQuads(
+                    remapQuads(oldQuads.all(), target),
+                    remapQuads(oldQuads.solid(), target),
+                    remapQuads(oldQuads.translucent(), target)));
         }
+    }
+
+    private static List<BakedQuad> remapQuads(List<BakedQuad> quads,
+                                               TextureAtlasSprite target) {
+        List<BakedQuad> remapped = new java.util.ArrayList<>(quads.size());
+        for (BakedQuad quad : quads) {
+            remapped.add(remapQuad(quad, target));
+        }
+        return remapped;
     }
 
     private static BakedQuad remapQuad(BakedQuad quad,
@@ -120,7 +133,9 @@ public abstract class ItemModelResolverCitMixin {
         BakedQuad.MaterialInfo old = quad.materialInfo();
         BakedQuad.MaterialInfo material = new BakedQuad.MaterialInfo(
                 target, layerFor(target), renderTypeFor(target),
-                old.tintIndex(), old.shade(), old.lightEmission());
+                old.itemGlintRenderType(), old.itemGlintSpecialRenderType(),
+                old.tintIndex(), old.shadeDirectionOverride(),
+                old.lightEmission());
         return new BakedQuad(quad.position0(), quad.position1(),
                 quad.position2(), quad.position3(),
                 remapUv(quad.packedUV0(), source, target),
@@ -136,10 +151,11 @@ public abstract class ItemModelResolverCitMixin {
         ItemStackRenderState.LayerRenderState[] layers =
                 accessor.argus$layers();
         for (int i = 0; i < accessor.argus$activeLayerCount(); i++) {
-            List<BakedQuad> quads = layers[i].prepareQuadList();
-            for (int q = 0; q < quads.size(); q++) {
+            ItemQuads quads = ((ItemStackRenderStateLayerAccessor) layers[i])
+                    .argus$quads();
+            for (BakedQuad quad : quads.all()) {
                 if (CustomAnimationRuntime.animatesSprite(
-                        quads.get(q).materialInfo().sprite())) {
+                        quad.materialInfo().sprite())) {
                     output.setAnimated();
                     return;
                 }

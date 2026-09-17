@@ -21,7 +21,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.RedStoneWireBlock;
+import net.minecraft.world.level.block.RedstoneWireBlock;
 import net.minecraft.world.level.block.StemBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.biome.Biome;
@@ -167,7 +167,7 @@ public final class CustomColorsRuntime {
      * <p>Performance: HOT PATH. Allocation policy mirrors vanilla's blend
      * code and allocates only the cursor/mutable position when biome blending
      * is enabled. The hook never passes custom ColorResolver instances back
-     * into ClientLevel, because 26.2 only registers vanilla resolvers.
+     * into ClientLevel, because 26.3 only registers vanilla resolvers.
      */
     public static int registeredBiomeColor(ColorResolver resolver,
                                            ClientLevel level,
@@ -228,12 +228,12 @@ public final class CustomColorsRuntime {
         if (active()) {
             ColormapImage image = SNAPSHOT.get().special("redstone");
             if (image != null) {
-                int power = state.getValue(RedStoneWireBlock.POWER);
+                int power = state.getValue(RedstoneWireBlock.POWER);
                 return image.pixel(power, 0);
             }
         }
-        return RedStoneWireBlock.getColorForPower(
-                state.getValue(RedStoneWireBlock.POWER));
+        return RedstoneWireBlock.getColorForPower(
+                state.getValue(RedstoneWireBlock.POWER));
     }
 
     public static int stemColor(BlockState state) {

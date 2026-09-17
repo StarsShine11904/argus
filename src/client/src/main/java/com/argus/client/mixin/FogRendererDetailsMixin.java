@@ -21,7 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * owned by vanilla or Custom Colors; Argus only pushes disabled fog distances
  * beyond visible range.
  *
- * <p>Risk: medium. The hook touches the 26.2 fog data object but does not alter
+ * <p>Risk: medium. The hook touches the 26.3 fog data object but does not alter
  * world or camera state, and fails safe if the signature changes.
  */
 @Mixin(FogRenderer.class)

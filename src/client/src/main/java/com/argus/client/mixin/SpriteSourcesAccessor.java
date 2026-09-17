@@ -30,7 +30,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
  *
  * <p>Low. We are not modifying the {@code ID_MAPPER}'s
  * behaviour, only adding a single entry. The field exists
- * in 26.2-rc-1 and is unlikely to change shape.
+ * in 26.3 and is unlikely to change shape.
  */
 @Mixin(SpriteSources.class)
 public interface SpriteSourcesAccessor {

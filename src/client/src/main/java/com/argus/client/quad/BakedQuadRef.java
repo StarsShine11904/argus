@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <h2>Why a wrapper instead of mutating the BakedQuad?</h2>
  *
- * <p>{@code BakedQuad} is a record in 26.2-rc-1 (and was
+ * <p>{@code BakedQuad} is a record in 26.3 (and was
  * effectively immutable before that). Mutating its fields
  * is not possible. The wrapper therefore re-creates the
  * BakedQuad on {@code withSprite} by copying every field
@@ -32,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * sprite's UV bounds) is the expensive part - that is
  * performed by the
  * {@link QuadRefSpriteSwapper#swap} helper, which uses the
- * 26.2-rc-1 BakedQuad's {@code bake()} entry point if
+ * 26.3 BakedQuad's {@code bake()} entry point if
  * available, or a fallback path that constructs a new
  * BakedQuad via the {@code materialInfo} only.
  *
@@ -76,7 +76,7 @@ public final class BakedQuadRef implements QuadRef {
 
     @Override
     public int lightEmission() {
-        // 26.2-rc-1's BakedQuad does not carry a
+        // 26.3's BakedQuad does not carry a
         // lightEmission field; the canonical lighting
         // is applied by the renderer from the section's
         // light data. We return 0 here (no special
@@ -89,7 +89,7 @@ public final class BakedQuadRef implements QuadRef {
 
     @Override
     public int tintIndex() {
-        // 26.2-rc-1 stores the tint index on the
+        // 26.3 stores the tint index on the
         // MaterialInfo, not on the BakedQuad directly.
         // The MaterialInfo is exposed via materialInfo()
         // and contains a tintIndex field. We return
@@ -100,7 +100,7 @@ public final class BakedQuadRef implements QuadRef {
 
     @Override
     public float aoShade() {
-        // The 26.2-rc-1 BakedQuad does not have a
+        // The 26.3 BakedQuad does not have a
         // shade field; the AO is computed by the
         // renderer. We return 1.0 (full brightness) as
         // a conservative default.
