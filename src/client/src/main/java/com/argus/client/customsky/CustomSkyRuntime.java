@@ -1,178 +1,245 @@
 package com.argus.client.customsky;
 
-import com.argus.config.ArgusConfigHolder;
+import com.argus.Constants;
+import com.argus.customsky.CustomSkyBlendMode;
 import com.argus.customsky.CustomSkyLayer;
-import com.argus.client.platform.ClientEnvironment;
-import com.argus.resource.NamespaceId;
+import com.argus.customsky.CustomSkyRotation;
+import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.BlendFactor;
+import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.Level;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import net.minecraft.client.renderer.BindGroupLayouts;
+import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
+import org.joml.Matrix4f;
+import org.joml.Matrix4fStack;
+import org.joml.Vector4f;
 
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.EnumMap;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.function.Supplier;
 
 /**
- * Client-render-thread runtime for Custom Sky.
+ * FrameGraph-era renderer for OptiFine-style 3x2 custom-skybox layers.
  *
- * <p>Performance: HOT PATH once per sky frame. Allocation policy: snapshot
- * arrays are reused; per-frame work is a short layer scan and texture render
- * calls only.
+ * <p>Threading: called on the render thread. Performance: HOT PATH; the cube
+ * mesh is built lazily once and reused by every layer.
  */
-public final class CustomSkyRuntime {
+public final class CustomSkyRenderer {
 
-    private static final Logger LOGGER =
-            LoggerFactory.getLogger("argus/custom-sky");
-    private static final AtomicReference<CustomSkyClientSnapshot> SNAPSHOT =
-            new AtomicReference<>(CustomSkyClientSnapshot.empty());
+    private static final float SIZE = 100.0F;
+    private static GpuBuffer cubeBuffer;
+    private static final EnumMap<CustomSkyBlendMode, RenderPipeline> PIPELINES =
+            new EnumMap<>(CustomSkyBlendMode.class);
 
-    private static volatile State state = State.empty();
-    private static boolean warnedCompat;
+    private static final Supplier<String> RENDER_PASS_LABEL =
+            () -> Component.translatable("argus.gpu.customsky.render_pass").getString();
+    private static final Supplier<String> CUBE_BUFFER_LABEL =
+            () -> Component.translatable("argus.gpu.customsky.cube_buffer").getString();
 
-    private CustomSkyRuntime() {
+    private CustomSkyRenderer() {
     }
 
-    public static void replace(CustomSkyClientSnapshot snapshot) {
-        CustomSkyClientSnapshot next = snapshot == null
-                ? CustomSkyClientSnapshot.empty()
-                : snapshot;
-        SNAPSHOT.set(next);
-        state = State.forSnapshot(next);
-    }
-
-    public static CustomSkyClientSnapshot snapshot() {
-        return SNAPSHOT.get();
-    }
-
-    public static void renderOverworld(PoseStack poseStack,
-                                       float rainBrightness) {
-        CustomSkyClientSnapshot snapshot = SNAPSHOT.get();
-        if (snapshot.isEmpty()
-                || !ArgusConfigHolder.get().customSkyActive()
-                || compatSkyModLoaded()) {
-            return;
-        }
+    public static void renderLayer(PoseStack poseStack,
+                                   CustomSkyClientSnapshot.RuntimeLayer layer,
+                                   int dayTime,
+                                   float alpha) {
         Minecraft minecraft = Minecraft.getInstance();
-        ClientLevel level = minecraft.level;
-        if (level == null || minecraft.gameRenderer == null) {
-            return;
+        RenderTarget target = minecraft.gameRenderer.mainRenderTarget();
+        AbstractTexture texture = layer.textureObject(minecraft);
+        GpuBuffer buffer = cubeBuffer();
+        RenderSystem.AutoStorageIndexBuffer indices =
+                RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
+        GpuBuffer indexBuffer = indices.getBuffer(36);
+        Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
+        modelViewStack.pushMatrix();
+        modelViewStack.mul(poseStack.last().pose());
+        CustomSkyRotation rotation = layer.rule().rotation();
+        if (rotation.rotate()) {
+            float angle = (dayTime / 24000.0F) * (float) (Math.PI * 2.0)
+                    * rotation.speed();
+            modelViewStack.rotate(angle, rotation.axisX(), rotation.axisY(),
+                    rotation.axisZ());
         }
-        RenderContext context = RenderContext.create(minecraft, level,
-                rainBrightness);
-        State localState = state;
-        CustomSkyClientSnapshot.RuntimeLayer[] layers =
-                snapshot.layersUnsafe();
-        for (int i = 0; i < layers.length; i++) {
-            CustomSkyClientSnapshot.RuntimeLayer runtime = layers[i];
-            CustomSkyLayer rule = runtime.rule();
-            float fade = rule.fadeAlpha(context.dayTime);
-            if (fade <= 0.001F) {
-                localState.step(i, 0.0F, rule.transitionTicks());
-                continue;
-            }
-            float targetAlpha = rule.conditionTargetAlpha(context.worldId,
-                    context.dayIndex, context.clearWeather,
-                    context.rainWeather, context.thunderWeather,
-                    context.biome, context.cameraY);
-            float conditionAlpha = localState.step(i, targetAlpha,
-                    rule.transitionTicks());
-            float alpha = fade * conditionAlpha;
-            if (alpha <= 0.001F) {
-                continue;
-            }
-            CustomSkyRenderer.renderLayer(poseStack, runtime, context.dayTime,
-                    alpha);
-        }
-    }
+        Vector4f shaderColor = shaderColor(layer.rule(), alpha);
+        GpuBufferSlice dynamicTransforms =
+                RenderSystem.getDynamicUniforms().writeTransform(
+                        new Matrix4f(modelViewStack),
+                        shaderColor);
+        modelViewStack.popMatrix();
 
-    private static boolean compatSkyModLoaded() {
-        boolean loaded = ClientEnvironment.isModLoaded("fabricskyboxes")
-                || ClientEnvironment.isModLoaded("nuit");
-        if (loaded && !warnedCompat) {
-            warnedCompat = true;
-            LOGGER.warn("[Argus] another Custom Sky mod is loaded; "
-                    + "Argus Custom Sky is disabled fail-safe");
-        }
-        return loaded;
-    }
-
-    private record RenderContext(int worldId,
-                                 int dayTime,
-                                 long dayIndex,
-                                 float clearWeather,
-                                 float rainWeather,
-                                 float thunderWeather,
-                                 NamespaceId biome,
-                                 int cameraY) {
-
-        static RenderContext create(Minecraft minecraft,
-                                    ClientLevel level,
-                                    float rainBrightness) {
-            int world = 0;
-            if (level.dimension() == Level.NETHER) {
-                world = -1;
-            } else if (level.dimension() == Level.END) {
-                world = 1;
-            }
-            long time = level.getOverworldClockTime();
-            int dayTime = Math.floorMod((int) time, 24000);
-            long day = Math.floorDiv(time, 24000L);
-            float rainLevel = Math.max(0.0F,
-                    Math.min(1.0F, 1.0F - rainBrightness));
-            float thunderLevel = Math.max(0.0F,
-                    Math.min(1.0F, level.getThunderLevel(1.0F)));
-            float clearWeather = Math.max(0.0F, 1.0F - rainLevel);
-            float thunderWeather = Math.min(rainLevel, thunderLevel);
-            float rainWeather = Math.max(0.0F,
-                    rainLevel - thunderWeather);
-            BlockPos pos = BlockPos.containing(
-                    minecraft.gameRenderer.mainCamera().position());
-            NamespaceId biome = level.getBiome(pos).unwrapKey()
-                    .map(key -> key.identifier())
-                    .map(id -> new NamespaceId(id.getNamespace(),
-                            id.getPath()))
-                    .orElse(null);
-            return new RenderContext(world, dayTime, day, clearWeather,
-                    rainWeather, thunderWeather, biome, pos.getY());
+        GpuTextureView colorTexture = target.getColorTextureView();
+        GpuTextureView depthTexture = target.getDepthTextureView();
+        try (RenderPass renderPass = RenderSystem.getDevice()
+                .createCommandEncoder()
+                .createRenderPass(RENDER_PASS_LABEL,
+                        colorTexture, Optional.empty(),
+                        depthTexture, OptionalDouble.empty())) {
+            renderPass.setPipeline(pipeline(layer.rule()));
+            RenderSystem.bindDefaultUniforms(renderPass);
+            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+            renderPass.bindTexture("Sampler0", texture.getTextureView(),
+                    texture.getSampler());
+            renderPass.setVertexBuffer(0, buffer.slice());
+            renderPass.setIndexBuffer(indexBuffer, indices.type());
+            renderPass.drawIndexed(36, 1, 0, 0, 0);
         }
     }
 
-    private static final class State {
-        private final float[] conditionAlpha;
-
-        private State(float[] conditionAlpha) {
-            this.conditionAlpha = conditionAlpha;
+    /**
+     * 取得天空混合模式的本地化名稱 Component（適合除錯 HUD 或介面顯示）。
+     */
+    public static Component blendModeDisplayName(CustomSkyBlendMode blendMode) {
+        if (blendMode == null) {
+            return Component.translatable("argus.customsky.blend.unknown");
         }
+        return Component.translatable("argus.customsky.blend." + blendMode.name().toLowerCase(Locale.ROOT));
+    }
 
-        static State empty() {
-            return new State(new float[0]);
+    private static Vector4f shaderColor(CustomSkyLayer layer, float alpha) {
+        float clamped = Math.max(0.0F, Math.min(1.0F, alpha));
+        return switch (layer.blend()) {
+            case SUBTRACT, DODGE, BURN, SCREEN, OVERLAY ->
+                    new Vector4f(clamped, clamped, clamped, 1.0F);
+            case MULTIPLY ->
+                    new Vector4f(clamped, clamped, clamped, clamped);
+            case ADD, ALPHA, REPLACE ->
+                    new Vector4f(1.0F, 1.0F, 1.0F, clamped);
+        };
+    }
+
+    private static RenderPipeline pipeline(CustomSkyLayer layer) {
+        return PIPELINES.computeIfAbsent(layer.blend(),
+                CustomSkyRenderer::createPipeline);
+    }
+
+    private static RenderPipeline createPipeline(CustomSkyBlendMode blendMode) {
+        RenderPipeline.Builder builder = RenderPipeline.builder()
+                .withBindGroupLayout(BindGroupLayouts.GLOBALS)
+                .withBindGroupLayout(BindGroupLayouts.MATRICES_PROJECTION)
+                .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
+                .withLocation(Identifier.fromNamespaceAndPath(Constants.MOD_ID,
+                        "pipeline/custom_sky_" + blendMode.name()
+                                .toLowerCase(Locale.ROOT)))
+                .withVertexShader("core/position_tex_color")
+                .withFragmentShader("core/position_tex_color")
+                .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+                .withPrimitiveTopology(PrimitiveTopology.QUADS);
+        BlendFunction blend = blendFunction(blendMode);
+        if (blend != null) {
+            builder.withColorTargetState(new ColorTargetState(blend));
         }
+        return builder.build();
+    }
 
-        static State forSnapshot(CustomSkyClientSnapshot snapshot) {
-            return new State(new float[snapshot == null ? 0
-                    : snapshot.size()]);
+    private static BlendFunction blendFunction(CustomSkyBlendMode blendMode) {
+        return switch (blendMode) {
+            case ADD -> new BlendFunction(BlendFactor.SRC_ALPHA,
+                    BlendFactor.ONE);
+            case ALPHA -> BlendFunction.TRANSLUCENT;
+            case MULTIPLY -> new BlendFunction(BlendFactor.DST_COLOR,
+                    BlendFactor.ONE_MINUS_SRC_ALPHA);
+            case SCREEN -> new BlendFunction(BlendFactor.ONE,
+                    BlendFactor.ONE_MINUS_SRC_COLOR);
+            case SUBTRACT -> new BlendFunction(
+                    BlendFactor.ONE_MINUS_DST_COLOR, BlendFactor.ZERO);
+            case DODGE -> new BlendFunction(BlendFactor.ONE,
+                    BlendFactor.ONE);
+            case BURN -> new BlendFunction(BlendFactor.ZERO,
+                    BlendFactor.ONE_MINUS_SRC_COLOR);
+            case OVERLAY -> new BlendFunction(BlendFactor.DST_COLOR,
+                    BlendFactor.SRC_COLOR);
+            case REPLACE -> null;
+        };
+    }
+
+    private static GpuBuffer cubeBuffer() {
+        if (cubeBuffer == null) {
+            cubeBuffer = buildCube();
         }
+        return cubeBuffer;
+    }
 
-        float step(int index, float target, int transitionTicks) {
-            if (index < 0 || index >= conditionAlpha.length) {
-                return target;
+    private static GpuBuffer buildCube() {
+        try (ByteBufferBuilder bytes = ByteBufferBuilder.exactlySized(
+                DefaultVertexFormat.POSITION_TEX_COLOR.getVertexSize()
+                        * 4 * 6)) {
+            BufferBuilder builder = new BufferBuilder(bytes,
+                    PrimitiveTopology.QUADS,
+                    DefaultVertexFormat.POSITION_TEX_COLOR);
+            // OptiFine/MCPatcher 3x2 custom-sky sheets are laid out as
+            // [down][up][north] / [west][south][east].
+            addFaceRotated180(builder, -SIZE, -SIZE, SIZE, -SIZE, SIZE, SIZE,
+                    SIZE, SIZE, SIZE, SIZE, -SIZE, SIZE, 2, 0);
+            addFaceRotated180(builder, SIZE, -SIZE, SIZE, SIZE, SIZE, SIZE,
+                    SIZE, SIZE, -SIZE, SIZE, -SIZE, -SIZE, 2, 1);
+            addFaceRotated180(builder, SIZE, -SIZE, -SIZE, SIZE, SIZE, -SIZE,
+                    -SIZE, SIZE, -SIZE, -SIZE, -SIZE, -SIZE, 1, 1);
+            addFaceRotated180(builder, -SIZE, -SIZE, -SIZE, -SIZE, SIZE, -SIZE,
+                    -SIZE, SIZE, SIZE, -SIZE, -SIZE, SIZE, 0, 1);
+            addFace(builder, -SIZE, -SIZE, -SIZE, -SIZE, -SIZE, SIZE,
+                    SIZE, -SIZE, SIZE, SIZE, -SIZE, -SIZE, 0, 0);
+            addFace(builder, -SIZE, SIZE, SIZE, -SIZE, SIZE, -SIZE,
+                    SIZE, SIZE, -SIZE, SIZE, SIZE, SIZE, 1, 0);
+            try (MeshData mesh = builder.buildOrThrow()) {
+                return RenderSystem.getDevice().createBuffer(
+                        CUBE_BUFFER_LABEL,
+                        32,
+                        mesh.vertexBuffer());
             }
-            float current = conditionAlpha[index];
-            float goal = Math.max(0.0F, Math.min(1.0F, target));
-            if (transitionTicks <= 0) {
-                conditionAlpha[index] = goal;
-                return goal;
-            }
-            float delta = 1.0F / transitionTicks;
-            if (current < goal) {
-                current = Math.min(goal, current + delta);
-            } else if (current > goal) {
-                current = Math.max(goal, current - delta);
-            }
-            conditionAlpha[index] = current;
-            return current;
         }
+    }
+
+    private static void addFace(BufferBuilder builder,
+                                float x0, float y0, float z0,
+                                float x1, float y1, float z1,
+                                float x2, float y2, float z2,
+                                float x3, float y3, float z3,
+                                int column,
+                                int row) {
+        float u0 = column / 3.0F;
+        float u1 = (column + 1) / 3.0F;
+        float v0 = row / 2.0F;
+        float v1 = (row + 1) / 2.0F;
+        int color = ARGB.white(1.0F);
+        builder.addVertex(x0, y0, z0).setUv(u0, v0).setColor(color);
+        builder.addVertex(x1, y1, z1).setUv(u0, v1).setColor(color);
+        builder.addVertex(x2, y2, z2).setUv(u1, v1).setColor(color);
+        builder.addVertex(x3, y3, z3).setUv(u1, v0).setColor(color);
+    }
+
+    private static void addFaceRotated180(BufferBuilder builder,
+                                          float x0, float y0, float z0,
+                                          float x1, float y1, float z1,
+                                          float x2, float y2, float z2,
+                                          float x3, float y3, float z3,
+                                          int column,
+                                          int row) {
+        float u0 = column / 3.0F;
+        float u1 = (column + 1) / 3.0F;
+        float v0 = row / 2.0F;
+        float v1 = (row + 1) / 2.0F;
+        int color = ARGB.white(1.0F);
+        builder.addVertex(x0, y0, z0).setUv(u1, v1).setColor(color);
+        builder.addVertex(x1, y1, z1).setUv(u1, v0).setColor(color);
+        builder.addVertex(x2, y2, z2).setUv(u0, v0).setColor(color);
+        builder.addVertex(x3, y3, z3).setUv(u0, v1).setColor(color);
     }
 }

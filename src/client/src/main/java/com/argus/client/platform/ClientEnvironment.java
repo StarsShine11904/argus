@@ -1,6 +1,7 @@
 package com.argus.client.platform;
 
 import com.argus.Constants;
+import net.minecraft.network.chat.Component;
 
 import java.nio.file.Path;
 import java.util.ServiceConfigurationError;
@@ -67,7 +68,7 @@ public final class ClientEnvironment {
     public static String modVersion() {
         String version = get().modVersion();
         return version == null || version.isBlank()
-                ? Constants.MOD_NAME + " dev"
+                ? Constants.MOD_NAME + " " + Component.translatable("argus.platform.version.dev").getString()
                 : version;
     }
 
@@ -79,7 +80,7 @@ public final class ClientEnvironment {
             }
         } catch (ServiceConfigurationError err) {
             throw new IllegalStateException(
-                    "Failed to load Argus client runtime platform", err);
+                    Component.translatable("argus.error.platform_load_failed").getString(), err);
         }
         return FALLBACK;
     }

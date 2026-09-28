@@ -1,7 +1,7 @@
 package com.argus.client.cit;
 
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
@@ -30,6 +30,20 @@ public record CitCacheKey(Identifier itemId,
                 enchantHash(stack.getEnchantments()),
                 stack.getComponents().hashCode(),
                 hand);
+    }
+
+    /**
+     * 取得手持狀態的可翻譯 Component。
+     */
+    public Component handDisplayName() {
+        if (hand == null || hand.isEmpty()) {
+            return Component.translatable("argus.cit.hand.none");
+        }
+        return switch (hand) {
+            case "main_hand", "mainhand" -> Component.translatable("argus.cit.hand.main");
+            case "off_hand", "offhand" -> Component.translatable("argus.cit.hand.off");
+            default -> Component.translatable("argus.cit.hand.custom", hand);
+        };
     }
 
     private static int enchantHash(ItemEnchantments enchantments) {

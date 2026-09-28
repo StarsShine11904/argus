@@ -7,6 +7,7 @@ import com.argus.resource.NamespaceId;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -105,17 +106,23 @@ public final class CustomAnimationClientSnapshot implements AutoCloseable {
         Optional<Resource> sourceResource = resourceManager.getResource(
                 sourceId);
         if (sourceResource.isEmpty()) {
-            logger.warn("[Argus] skipping custom animation {}: missing {}",
-                    rule.sourceFile(), sourceId);
+            logger.warn("{}", Component.translatable(
+                    "argus.warn.animation.missing_resource",
+                    rule.sourceFile(),
+                    sourceId
+            ).getString());
             return null;
         }
         NativeImage image;
         try (var in = sourceResource.get().open()) {
             image = NativeImage.read(in);
         } catch (Exception e) {
-            logger.warn("[Argus] skipping custom animation {}: failed to "
-                            + "read {}: {}", rule.sourceFile(), sourceId,
-                    e.getMessage());
+            logger.warn("{}", Component.translatable(
+                    "argus.warn.animation.read_failed",
+                    rule.sourceFile(),
+                    sourceId,
+                    e.getMessage()
+            ).getString());
             return null;
         }
         int width = rule.width() > 0 ? rule.width() : image.getWidth();
@@ -123,10 +130,14 @@ public final class CustomAnimationClientSnapshot implements AutoCloseable {
         if (width <= 0 || height <= 0 || width > image.getWidth()
                 || height > image.getHeight()) {
             image.close();
-            logger.warn("[Argus] skipping custom animation {}: invalid "
-                            + "frame size {}x{} for source {}x{}",
-                    rule.sourceFile(), width, height, image.getWidth(),
-                    image.getHeight());
+            logger.warn("{}", Component.translatable(
+                    "argus.warn.animation.invalid_frame_size",
+                    rule.sourceFile(),
+                    width,
+                    height,
+                    image.getWidth(),
+                    image.getHeight()
+            ).getString());
             return null;
         }
         int columns = image.getWidth() / width;
@@ -134,8 +145,10 @@ public final class CustomAnimationClientSnapshot implements AutoCloseable {
         int frameCapacity = columns * rows;
         if (columns <= 0 || rows <= 0 || frameCapacity <= 0) {
             image.close();
-            logger.warn("[Argus] skipping custom animation {}: source does "
-                    + "not contain complete frames", rule.sourceFile());
+            logger.warn("{}", Component.translatable(
+                    "argus.warn.animation.incomplete_frames",
+                    rule.sourceFile()
+            ).getString());
             return null;
         }
         int[] tiles;
@@ -154,10 +167,12 @@ public final class CustomAnimationClientSnapshot implements AutoCloseable {
                 CustomAnimationFrame frame = rule.frames().get(i);
                 if (frame.tileIndex() >= frameCapacity) {
                     image.close();
-                    logger.warn("[Argus] skipping custom animation {}: "
-                                    + "tile {} outside {} available frames",
-                            rule.sourceFile(), frame.tileIndex(),
-                            frameCapacity);
+                    logger.warn("{}", Component.translatable(
+                            "argus.warn.animation.tile_outside_range",
+                            rule.sourceFile(),
+                            frame.tileIndex(),
+                            frameCapacity
+                    ).getString());
                     return null;
                 }
                 tiles[i] = frame.tileIndex();
@@ -167,10 +182,11 @@ public final class CustomAnimationClientSnapshot implements AutoCloseable {
         NamespaceId targetSprite = targetSpriteId(rule.toTexture());
         if (targetSprite == null) {
             image.close();
-            logger.warn("[Argus] skipping custom animation {}: only "
-                            + "textures/.../*.png atlas targets are supported "
-                            + "in the MVP ({})",
-                    rule.sourceFile(), rule.toTexture());
+            logger.warn("{}", Component.translatable(
+                    "argus.warn.animation.unsupported_target",
+                    rule.sourceFile(),
+                    rule.toTexture()
+            ).getString());
             return null;
         }
         NativeImage[][] frameMipImages = cropFrames(image, width, height, columns,

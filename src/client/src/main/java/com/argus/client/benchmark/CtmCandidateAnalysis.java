@@ -8,6 +8,7 @@ import com.argus.ctm.CtmRule;
 import com.argus.ctm.Faces;
 import com.argus.resource.NamespaceId;
 import com.argus.resource.RangeListInt;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -133,15 +134,16 @@ public final class CtmCandidateAnalysis {
     }
 
     private static String faceName(int face) {
-        return switch (face) {
-            case Faces.DOWN -> "down";
-            case Faces.UP -> "up";
-            case Faces.NORTH -> "north";
-            case Faces.SOUTH -> "south";
-            case Faces.WEST -> "west";
-            case Faces.EAST -> "east";
-            default -> "unknown";
+        String key = switch (face) {
+            case Faces.DOWN -> "argus.face.down";
+            case Faces.UP -> "argus.face.up";
+            case Faces.NORTH -> "argus.face.north";
+            case Faces.SOUTH -> "argus.face.south";
+            case Faces.WEST -> "argus.face.west";
+            case Faces.EAST -> "argus.face.east";
+            default -> "argus.face.unknown";
         };
+        return Component.translatable(key).getString();
     }
 
     private static String methodSummary(CtmRule[] spriteRules,
@@ -365,23 +367,25 @@ public final class CtmCandidateAnalysis {
 
         private String summary() {
             StringBuilder out = new StringBuilder(80);
-            append(out, "biomes", biomes);
-            append(out, "heights", heights);
-            append(out, "connectTiles", connectTiles);
-            append(out, "connectBlocks", connectBlocks);
-            append(out, "matchTiles", matchTiles);
-            append(out, "matchBlocks", matchBlocks);
+            append(out, "argus.benchmark.condition.biomes", biomes);
+            append(out, "argus.benchmark.condition.heights", heights);
+            append(out, "argus.benchmark.condition.connect_tiles", connectTiles);
+            append(out, "argus.benchmark.condition.connect_blocks", connectBlocks);
+            append(out, "argus.benchmark.condition.match_tiles", matchTiles);
+            append(out, "argus.benchmark.condition.match_blocks", matchBlocks);
             return out.toString();
         }
 
-        private static void append(StringBuilder out, String name, int count) {
+        private static void append(StringBuilder out, String translationKey, int count) {
             if (count == 0) {
                 return;
             }
             if (!out.isEmpty()) {
                 out.append(',');
             }
-            out.append(name).append(':').append(count);
+            out.append(Component.translatable(translationKey).getString())
+                    .append(':')
+                    .append(count);
         }
     }
 

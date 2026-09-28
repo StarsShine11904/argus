@@ -4,6 +4,7 @@ import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.renderer.BiomeColors;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -14,14 +15,27 @@ import net.minecraft.world.level.block.state.BlockState;
  * common fallback path calls the matching vanilla tint function directly.
  */
 public enum ArgusCustomBlockTintSource implements BlockTintSource {
-    GRASS,
-    GRASS_BLOCK,
-    FOLIAGE,
-    WATER,
-    WATER_PARTICLES,
-    REDSTONE,
-    STEM,
-    PALETTE;
+    GRASS("grass"),
+    GRASS_BLOCK("grass_block"),
+    FOLIAGE("foliage"),
+    WATER("water"),
+    WATER_PARTICLES("water_particles"),
+    REDSTONE("redstone"),
+    STEM("stem"),
+    PALETTE("palette");
+
+    private final String key;
+
+    ArgusCustomBlockTintSource(String key) {
+        this.key = key;
+    }
+
+    /**
+     * 取得該著色來源的本地化翻譯 Component（可供設定介面或除錯顯示呼叫）。
+     */
+    public Component displayName() {
+        return Component.translatable("argus.tint_source." + this.key);
+    }
 
     @Override
     public int color(BlockState state) {

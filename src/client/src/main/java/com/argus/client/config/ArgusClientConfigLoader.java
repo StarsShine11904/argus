@@ -5,6 +5,7 @@ import com.argus.config.ArgusConfig;
 import com.argus.config.ArgusConfigDefaults;
 import com.argus.config.ArgusConfigHolder;
 import com.argus.config.ArgusConfigLoader;
+import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,29 +63,33 @@ public final class ArgusClientConfigLoader {
         }
         Path file = configDir.resolve(FILE_NAME);
         if (!Files.isRegularFile(file)) {
-            LOGGER.debug("[{}] no {} found, using defaults",
-                    Constants.MOD_NAME, file);
+            LOGGER.debug("{}", Component.translatable(
+                    "argus.debug.config.not_found",
+                    Constants.MOD_NAME,
+                    file
+            ).getString());
             return ArgusConfigDefaults.defaults();
         }
         try (InputStream in = Files.newInputStream(file)) {
             ArgusConfig cfg = ArgusConfigLoader.load(in);
-            LOGGER.info("[{}] loaded config from {}: enabled={} "
-                        + "ctm={} betterGrass={} cit={} customGui={} "
-                        + "customColors={} customSky={} naturalTextures={} "
-                        + "betterSnow={} customAnimations={} "
-                        + "randomEntities={} cem={} detailsSky={}",
-                Constants.MOD_NAME, file, cfg.enabled(), cfg.ctmEnabled(),
-                cfg.betterGrassMode(), cfg.citEnabled(),
-                cfg.customGuiEnabled(), cfg.customColorsEnabled(),
-                cfg.customSkyEnabled(), cfg.naturalTexturesEnabled(),
-                cfg.betterSnowEnabled(), cfg.customAnimationsEnabled(),
-                cfg.randomEntitiesEnabled(), cfg.customEntityModelsEnabled(),
-                cfg.detailsSkyEnabled());
+            LOGGER.info("{}", Component.translatable(
+                    "argus.info.config.loaded",
+                    Constants.MOD_NAME, file, cfg.enabled(), cfg.ctmEnabled(),
+                    cfg.betterGrassMode(), cfg.citEnabled(),
+                    cfg.customGuiEnabled(), cfg.customColorsEnabled(),
+                    cfg.customSkyEnabled(), cfg.naturalTexturesEnabled(),
+                    cfg.betterSnowEnabled(), cfg.customAnimationsEnabled(),
+                    cfg.randomEntitiesEnabled(), cfg.customEntityModelsEnabled(),
+                    cfg.detailsSkyEnabled()
+            ).getString());
             return cfg;
         } catch (Exception e) {
-            LOGGER.warn("[{}] failed to read config from {}; "
-                            + "falling back to defaults: {}",
-                    Constants.MOD_NAME, file, e.getMessage());
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.config.load_failed",
+                    Constants.MOD_NAME,
+                    file,
+                    e.getMessage()
+            ).getString());
             return ArgusConfigDefaults.defaults();
         }
     }
@@ -286,10 +291,18 @@ public final class ArgusClientConfigLoader {
             try (OutputStream out = Files.newOutputStream(file)) {
                 props.store(out, "Argus configuration");
             }
-            LOGGER.info("[{}] saved config to {}", Constants.MOD_NAME, file);
+            LOGGER.info("{}", Component.translatable(
+                    "argus.info.config.saved",
+                    Constants.MOD_NAME,
+                    file
+            ).getString());
         } catch (Exception e) {
-            LOGGER.warn("[{}] failed to save config to {}: {}",
-                    Constants.MOD_NAME, file, e.getMessage());
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.config.save_failed",
+                    Constants.MOD_NAME,
+                    file,
+                    e.getMessage()
+            ).getString());
         }
     }
 }

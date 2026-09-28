@@ -1,5 +1,6 @@
 package com.argus.client.benchmark;
 
+import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -152,8 +153,7 @@ public final class ArgusBenchmark {
                 return;
             }
             lastReportNanos = now;
-            StringBuilder line = new StringBuilder(512);
-            line.append("[Argus] benchmark");
+            StringBuilder metrics = new StringBuilder(512);
             for (int i = 0; i < NAMES.length; i++) {
                 long count = COUNTS[i].sumThenReset();
                 long nanos = NANOS[i].sumThenReset();
@@ -162,7 +162,7 @@ public final class ArgusBenchmark {
                 }
                 double totalMs = nanos / 1_000_000.0D;
                 double avgNs = (double) nanos / count;
-                line.append(' ')
+                metrics.append(' ')
                         .append(NAMES[i])
                         .append("{count=")
                         .append(count)
@@ -174,7 +174,10 @@ public final class ArgusBenchmark {
                                 "%.1f", avgNs))
                         .append('}');
             }
-            LOGGER.info(line.toString());
+            LOGGER.info("{}", Component.translatable(
+                    "argus.info.benchmark.report",
+                    metrics.toString()
+            ).getString());
         }
     }
 

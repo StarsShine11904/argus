@@ -1,7 +1,9 @@
 package com.argus.client.quad;
 
+import com.argus.Constants;
 import com.argus.quad.CtmQuadDecorator;
 import com.argus.quad.QuadDecorators;
+import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,7 +27,7 @@ import org.slf4j.LoggerFactory;
 public final class ClientQuadDecorators {
 
     private static final Logger LOGGER =
-            LoggerFactory.getLogger("argus/quad-decorators");
+            LoggerFactory.getLogger(Constants.MOD_ID + "/quad-decorators");
 
     /** The default Argus decorator instance, shared by
      *  the renderer across all section builds. */
@@ -51,6 +53,8 @@ public final class ClientQuadDecorators {
      */
     public static void installDefaults() {
         QuadDecorators.register(DEFAULT_CTM);
-        LOGGER.info("[argus] installed default CTM quad decorator");
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.quad.installed_default_ctm").getString());
     }
 }

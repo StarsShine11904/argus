@@ -1,10 +1,11 @@
 package com.argus.client.sodium;
 
+import com.argus.Constants;
 import com.argus.bettergrass.BetterGrassFamily;
 import com.argus.bettergrass.BetterGrassRules;
-import com.argus.config.BetterGrassMode;
 import com.argus.config.ArgusConfig;
 import com.argus.config.ArgusConfigHolder;
+import com.argus.config.BetterGrassMode;
 import com.argus.resource.NamespaceId;
 import net.caffeinemc.mods.sodium.client.render.model.MutableQuadViewImpl;
 import net.caffeinemc.mods.sodium.client.render.texture.SpriteFinderCache;
@@ -12,6 +13,7 @@ import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -43,7 +45,7 @@ public final class ArgusSodiumBetterGrass {
 
     private static final float FULL_FACE_EPSILON = 0.001F;
     private static final Logger LOGGER =
-            LoggerFactory.getLogger("argus/sodium-better-grass");
+            LoggerFactory.getLogger(Constants.MOD_ID + "/sodium-better-grass");
     private static final int MULTILAYER_FALLBACK_LOG_LIMIT = 8;
     private static final AtomicInteger MULTILAYER_FALLBACK_LOGS =
             new AtomicInteger();
@@ -283,9 +285,9 @@ public final class ArgusSodiumBetterGrass {
         if (index >= MULTILAYER_FALLBACK_LOG_LIMIT) {
             return;
         }
-        LOGGER.info("[argus] grass.multilayer=true requested; falling back "
-                + "to replacement Better Grass until tinted overlay emission "
-                + "is stabilized");
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.better_grass.multilayer_fallback").getString());
     }
 
     private static @Nullable Direction faceDirection(MutableQuadViewImpl quad) {

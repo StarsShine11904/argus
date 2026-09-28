@@ -1,14 +1,15 @@
 package com.argus.client.sodium;
 
-import com.argus.config.BetterGrassMode;
+import com.argus.Constants;
+import com.argus.client.config.ArgusClientConfigLoader;
+import com.argus.client.platform.ClientEnvironment;
 import com.argus.config.ArgusConfig;
 import com.argus.config.ArgusConfigDefaults;
 import com.argus.config.ArgusConfigHolder;
+import com.argus.config.BetterGrassMode;
 import com.argus.config.FullscreenMode;
 import com.argus.config.OverlayCorner;
 import com.argus.config.TextContrast;
-import com.argus.client.config.ArgusClientConfigLoader;
-import com.argus.client.platform.ClientEnvironment;
 import net.caffeinemc.mods.sodium.api.config.ConfigEntryPoint;
 import net.caffeinemc.mods.sodium.api.config.StorageEventHandler;
 import net.caffeinemc.mods.sodium.api.config.option.OptionFlag;
@@ -16,20 +17,17 @@ import net.caffeinemc.mods.sodium.api.config.structure.BooleanOptionBuilder;
 import net.caffeinemc.mods.sodium.api.config.structure.ConfigBuilder;
 import net.caffeinemc.mods.sodium.api.config.structure.EnumOptionBuilder;
 import net.caffeinemc.mods.sodium.api.config.structure.IntegerOptionBuilder;
+import net.caffeinemc.mods.sodium.api.config.structure.OptionPageBuilder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
  * Registers Argus's Sodium settings pages.
- *
- * <p>The menu is grouped by player-facing feature family instead of by
- * implementation history. Each visible option has an active runtime hook; the
- * dynamic per-resource-pack animation page is intentionally not exposed until
- * the config format supports stable map serialization.
  *
  * <p>Threading: Sodium calls this on the client configuration UI thread. The
  * storage publishes immutable {@link ArgusConfig} snapshots through
@@ -39,15 +37,9 @@ import java.util.function.Supplier;
  */
 public final class ArgusSodiumConfigEntryPoint implements ConfigEntryPoint {
 
-    private static final String MOD_ID = "argus";
     private static final Identifier CONFIG_ICON =
-            Identifier.fromNamespaceAndPath(MOD_ID,
-                    "textures/gui/config_icon.png");
+            Identifier.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/config_icon.png");
     private static final String ETF_MOD_ID = "entity_texture_features";
-    private static final String ETF_COMPAT_TOOLTIP =
-            " Disabled because Entity Texture Features is installed. "
-                    + "ETF owns this overlapping entity texture path for "
-                    + "this session.";
 
     private final OptionStorage storage = new OptionStorage();
     private final StorageEventHandler storageHandler = this.storage::flush;
@@ -55,202 +47,99 @@ public final class ArgusSodiumConfigEntryPoint implements ConfigEntryPoint {
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
         builder.registerOwnModOptions()
-                .setName("Argus")
+                .setName(Constants.MOD_NAME)
                 .setVersion(argusVersion())
                 .setIcon(CONFIG_ICON)
                 .addPage(builder.createOptionPage()
-                        .setName(Component.literal("General"))
+                        .setName(Component.translatable("argus.config.page.general"))
                         .addOptionGroup(builder.createOptionGroup()
-                                .setName(Component.literal("Renderer"))
+                                .setName(Component.translatable("argus.config.group.renderer"))
                                 .addOption(booleanOption(builder, "enabled",
-                                        "Enable Argus",
-                                        "Master switch for all Argus client "
-                                                + "visual features.",
                                         ArgusConfigDefaults.ENABLED,
                                         this.storage::setEnabled,
                                         this.storage::getEnabled,
                                         OptionFlag.REQUIRES_RENDERER_RELOAD))
                                 .addOption(booleanOption(builder, "safe_mode",
-                                        "Safe Mode",
-                                        "Keep conservative renderer fallbacks "
-                                                + "enabled while debugging.",
                                         ArgusConfigDefaults.SAFE_MODE,
                                         this.storage::setSafeMode,
                                         this.storage::getSafeMode))
-                                .addOption(booleanOption(builder,
-                                        "verify_mode", "Verify Mode",
-                                        "Enable additional development checks "
-                                                + "where available.",
+                                .addOption(booleanOption(builder, "verify_mode",
                                         ArgusConfigDefaults.VERIFY_MODE,
                                         this.storage::setVerifyMode,
                                         this.storage::getVerifyMode))
-                                .addOption(booleanOption(builder,
-                                        "duplicate_translucent_backfaces",
-                                        "Duplicate Translucent Backfaces",
-                                        "Emit reversed backface copies for "
-                                                + "translucent replacement "
-                                                + "quads.",
-                                        ArgusConfigDefaults
-                                                .DUPLICATE_TRANSLUCENT_BACKFACES,
-                                        this.storage
-                                                ::setDuplicateTranslucentBackfaces,
-                                        this.storage
-                                                ::getDuplicateTranslucentBackfaces,
+                                .addOption(booleanOption(builder, "duplicate_translucent_backfaces",
+                                        ArgusConfigDefaults.DUPLICATE_TRANSLUCENT_BACKFACES,
+                                        this.storage::setDuplicateTranslucentBackfaces,
+                                        this.storage::getDuplicateTranslucentBackfaces,
                                         OptionFlag.REQUIRES_RENDERER_RELOAD))))
                 .addPage(builder.createOptionPage()
-                        .setName(Component.literal("Resource Pack Features"))
+                        .setName(Component.translatable("argus.config.page.resource_packs"))
                         .addOptionGroup(builder.createOptionGroup()
-                                .setName(Component.literal("OptiFine Features"))
-                                .addOption(booleanOption(builder,
-                                        "ctm_enabled", "Connected Textures",
-                                        "Render connected textures through "
-                                                + "Argus's Sodium path.",
+                                .setName(Component.translatable("argus.config.group.optifine_features"))
+                                .addOption(booleanOption(builder, "ctm_enabled",
                                         ArgusConfigDefaults.CTM_ENABLED,
                                         this.storage::setCtmEnabled,
                                         this.storage::getCtmEnabled,
                                         OptionFlag.REQUIRES_RENDERER_RELOAD))
-                                .addOption(booleanOption(builder,
-                                        "cit_enabled", "Custom Item Textures",
-                                        "Render OptiFine item texture and "
-                                                + "model replacements.",
+                                .addOption(booleanOption(builder, "cit_enabled",
                                         ArgusConfigDefaults.CIT_ENABLED,
                                         this.storage::setCitEnabled,
                                         this.storage::getCitEnabled))
-                                .addOption(booleanOption(builder,
-                                        "custom_gui_enabled", "Custom GUI",
-                                        "Render OptiFine GUI texture "
-                                                + "replacements.",
-                                        ArgusConfigDefaults
-                                                .CUSTOM_GUI_ENABLED,
+                                .addOption(booleanOption(builder, "custom_gui_enabled",
+                                        ArgusConfigDefaults.CUSTOM_GUI_ENABLED,
                                         this.storage::setCustomGuiEnabled,
                                         this.storage::getCustomGuiEnabled))
-                                .addOption(booleanOption(builder,
-                                        "custom_colors_enabled",
-                                        "Custom Colors",
-                                        "Apply color.properties and colormap "
-                                                + "resource-pack overrides.",
-                                        ArgusConfigDefaults
-                                                .CUSTOM_COLORS_ENABLED,
+                                .addOption(booleanOption(builder, "custom_colors_enabled",
+                                        ArgusConfigDefaults.CUSTOM_COLORS_ENABLED,
                                         this.storage::setCustomColorsEnabled,
                                         this.storage::getCustomColorsEnabled,
                                         OptionFlag.REQUIRES_RENDERER_RELOAD))
-                                .addOption(booleanOption(builder,
-                                        "custom_sky_enabled", "Custom Sky",
-                                        "Render OptiFine sky layers loaded "
-                                                + "from resource packs.",
-                                        ArgusConfigDefaults
-                                                .CUSTOM_SKY_ENABLED,
+                                .addOption(booleanOption(builder, "custom_sky_enabled",
+                                        ArgusConfigDefaults.CUSTOM_SKY_ENABLED,
                                         this.storage::setCustomSkyEnabled,
                                         this.storage::getCustomSkyEnabled))
-                                .addOption(booleanOption(builder,
-                                        "custom_animations_enabled",
-                                        "Custom Animations",
-                                        "Tick OptiFine custom texture "
-                                                + "animations loaded from "
-                                                + "resource packs.",
-                                        ArgusConfigDefaults
-                                                .CUSTOM_ANIMATIONS_ENABLED,
-                                        this.storage
-                                                ::setCustomAnimationsEnabled,
-                                        this.storage
-                                                ::getCustomAnimationsEnabled))
-                                .addOption(booleanOption(builder,
-                                        "custom_entity_models_enabled",
-                                        "Custom Entity Models",
-                                        "Apply OptiFine/EMF-style custom "
-                                                + "entity models when "
-                                                + "supported.",
-                                        ArgusConfigDefaults
-                                                .CUSTOM_ENTITY_MODELS_ENABLED,
-                                        this.storage
-                                                ::setCustomEntityModelsEnabled,
-                                        this.storage
-                                                ::getCustomEntityModelsEnabled))
-                                .addOption(booleanOption(builder,
-                                        "natural_textures_enabled",
-                                        "Natural Textures",
-                                        "Apply natural.properties UV "
-                                                + "rotations to terrain.",
-                                        ArgusConfigDefaults
-                                                .NATURAL_TEXTURES_ENABLED,
-                                        this.storage
-                                                ::setNaturalTexturesEnabled,
-                                        this.storage
-                                                ::getNaturalTexturesEnabled,
+                                .addOption(booleanOption(builder, "custom_animations_enabled",
+                                        ArgusConfigDefaults.CUSTOM_ANIMATIONS_ENABLED,
+                                        this.storage::setCustomAnimationsEnabled,
+                                        this.storage::getCustomAnimationsEnabled))
+                                .addOption(booleanOption(builder, "custom_entity_models_enabled",
+                                        ArgusConfigDefaults.CUSTOM_ENTITY_MODELS_ENABLED,
+                                        this.storage::setCustomEntityModelsEnabled,
+                                        this.storage::getCustomEntityModelsEnabled))
+                                .addOption(booleanOption(builder, "natural_textures_enabled",
+                                        ArgusConfigDefaults.NATURAL_TEXTURES_ENABLED,
+                                        this.storage::setNaturalTexturesEnabled,
+                                        this.storage::getNaturalTexturesEnabled,
                                         OptionFlag.REQUIRES_RENDERER_RELOAD))
-                                .addOption(booleanOption(builder,
-                                        "better_snow_enabled", "Better Snow",
-                                        "Emit OptiFine-style snow layer "
-                                                + "coverage for supported "
-                                                + "non-solid blocks.",
-                                        ArgusConfigDefaults
-                                                .BETTER_SNOW_ENABLED,
+                                .addOption(booleanOption(builder, "better_snow_enabled",
+                                        ArgusConfigDefaults.BETTER_SNOW_ENABLED,
                                         this.storage::setBetterSnowEnabled,
                                         this.storage::getBetterSnowEnabled,
                                         OptionFlag.REQUIRES_RENDERER_RELOAD))
-                                .addOption(booleanOption(builder,
-                                        "ctm_debug_logging",
-                                        "CTM Debug Logging",
-                                        "Write gated CTM diagnostics to the "
-                                                + "client log.",
-                                        ArgusConfigDefaults
-                                                .CTM_DEBUG_LOGGING,
+                                .addOption(booleanOption(builder, "ctm_debug_logging",
+                                        ArgusConfigDefaults.CTM_DEBUG_LOGGING,
                                         this.storage::setCtmDebugLogging,
                                         this.storage::getCtmDebugLogging)))
                         .addOptionGroup(builder.createOptionGroup()
-                                .setName(Component.literal(
-                                        "Entity Textures"))
-                                .addOption(entityTextureOption(builder,
-                                        "entity_textures_enabled",
-                                        "Entity Textures",
-                                        "Enable Argus's clean-room "
-                                                + "OptiFine-style entity "
-                                                + "texture feature family.",
-                                        ArgusConfigDefaults
-                                                .ENTITY_TEXTURES_ENABLED,
+                                .setName(Component.translatable("argus.config.group.entity_textures"))
+                                .addOption(entityTextureOption(builder, "entity_textures_enabled",
+                                        ArgusConfigDefaults.ENTITY_TEXTURES_ENABLED,
                                         this.storage::setEntityTexturesEnabled,
                                         this.storage::getEntityTexturesEnabled))
-                                .addOption(entityTextureOption(builder,
-                                        "random_entities_enabled",
-                                        "Random Entities",
-                                        "Apply OptiFine-style random "
-                                                + "entity texture variants.",
-                                        ArgusConfigDefaults
-                                                .RANDOM_ENTITIES_ENABLED,
-                                        this.storage
-                                                ::setRandomEntitiesEnabled,
-                                        this.storage
-                                                ::getRandomEntitiesEnabled))
-                                .addOption(entityTextureOption(builder,
-                                        "random_block_entity_textures",
-                                        "Random Tile Entities",
-                                        "Apply OptiFine-style random texture "
-                                                + "variants to supported "
-                                                + "BlockEntity renderers.",
-                                        ArgusConfigDefaults
-                                                .RANDOM_BLOCK_ENTITY_TEXTURES,
-                                        this.storage
-                                                ::setRandomBlockEntityTextures,
-                                        this.storage
-                                                ::getRandomBlockEntityTextures))
-                                .addOption(entityTextureOption(builder,
-                                        "entity_emissive_textures",
-                                        "Entity Emissive",
-                                        "Render fullbright companion textures "
-                                                + "for entity textures.",
-                                        ArgusConfigDefaults
-                                                .ENTITY_EMISSIVE_TEXTURES,
-                                        this.storage
-                                                ::setEntityEmissiveTextures,
-                                        this.storage
-                                                ::getEntityEmissiveTextures))
-                                .addOption(entityTextureOption(builder,
-                                        "entity_texture_debug",
-                                        "Entity Texture Debug",
-                                        "Write gated entity texture "
-                                                + "diagnostics to the log.",
-                                        ArgusConfigDefaults
-                                                .ENTITY_TEXTURE_DEBUG,
+                                .addOption(entityTextureOption(builder, "random_entities_enabled",
+                                        ArgusConfigDefaults.RANDOM_ENTITIES_ENABLED,
+                                        this.storage::setRandomEntitiesEnabled,
+                                        this.storage::getRandomEntitiesEnabled))
+                                .addOption(entityTextureOption(builder, "random_block_entity_textures",
+                                        ArgusConfigDefaults.RANDOM_BLOCK_ENTITY_TEXTURES,
+                                        this.storage::setRandomBlockEntityTextures,
+                                        this.storage::getRandomBlockEntityTextures))
+                                .addOption(entityTextureOption(builder, "entity_emissive_textures",
+                                        ArgusConfigDefaults.ENTITY_EMISSIVE_TEXTURES,
+                                        this.storage::setEntityEmissiveTextures,
+                                        this.storage::getEntityEmissiveTextures))
+                                .addOption(entityTextureOption(builder, "entity_texture_debug",
+                                        ArgusConfigDefaults.ENTITY_TEXTURE_DEBUG,
                                         this.storage::setEntityTextureDebug,
                                         this.storage::getEntityTextureDebug))))
                 .addPage(detailsPage(builder))
@@ -262,501 +151,331 @@ public final class ArgusSodiumConfigEntryPoint implements ConfigEntryPoint {
                 .addPage(betterGrassPage(builder));
     }
 
-    private net.caffeinemc.mods.sodium.api.config.structure.OptionPageBuilder
-    detailsPage(ConfigBuilder builder) {
+    private OptionPageBuilder detailsPage(ConfigBuilder builder) {
         return builder.createOptionPage()
-                .setName(Component.literal("Details"))
+                .setName(Component.translatable("argus.config.page.details"))
                 .addOptionGroup(builder.createOptionGroup()
-                        .setName(Component.literal("Sky and Weather"))
-                        .addOption(booleanOption(builder,
-                                "details_sky_enabled", "Sky",
-                                "Render vanilla sky details. Turning this off "
-                                        + "also disables Argus Custom Sky.",
+                        .setName(Component.translatable("argus.config.group.sky_and_weather"))
+                        .addOption(booleanOption(builder, "details_sky_enabled",
                                 ArgusConfigDefaults.DETAILS_SKY_ENABLED,
                                 this.storage::setDetailsSkyEnabled,
                                 this.storage::getDetailsSkyEnabled))
-                        .addOption(booleanOption(builder,
-                                "details_sun_enabled", "Sun",
-                                "Render the vanilla sun.",
+                        .addOption(booleanOption(builder, "details_sun_enabled",
                                 ArgusConfigDefaults.DETAILS_SUN_ENABLED,
                                 this.storage::setDetailsSunEnabled,
                                 this.storage::getDetailsSunEnabled))
-                        .addOption(booleanOption(builder,
-                                "details_moon_enabled", "Moon",
-                                "Render the vanilla moon.",
+                        .addOption(booleanOption(builder, "details_moon_enabled",
                                 ArgusConfigDefaults.DETAILS_MOON_ENABLED,
                                 this.storage::setDetailsMoonEnabled,
                                 this.storage::getDetailsMoonEnabled))
-                        .addOption(booleanOption(builder,
-                                "details_stars_enabled", "Stars",
-                                "Render vanilla stars.",
+                        .addOption(booleanOption(builder, "details_stars_enabled",
                                 ArgusConfigDefaults.DETAILS_STARS_ENABLED,
                                 this.storage::setDetailsStarsEnabled,
                                 this.storage::getDetailsStarsEnabled))
-                        .addOption(integerOption(builder,
-                                "details_cloud_height", "Cloud Height",
-                                "Override the cloud render height used by "
-                                        + "Minecraft's cloud pass.",
+                        .addOption(integerOption(builder, "details_cloud_height",
                                 ArgusConfigDefaults.DETAILS_CLOUD_HEIGHT,
                                 0, 512, 1,
                                 this.storage::setDetailsCloudHeight,
                                 this.storage::getDetailsCloudHeight))
-                        .addOption(booleanOption(builder,
-                                "details_rain_snow_enabled", "Rain and Snow",
-                                "Render vanilla weather effects.",
-                                ArgusConfigDefaults
-                                        .DETAILS_RAIN_SNOW_ENABLED,
+                        .addOption(booleanOption(builder, "details_rain_snow_enabled",
+                                ArgusConfigDefaults.DETAILS_RAIN_SNOW_ENABLED,
                                 this.storage::setDetailsRainSnowEnabled,
                                 this.storage::getDetailsRainSnowEnabled))
-                        .addOption(booleanOption(builder,
-                                "colors_biome_enabled", "Biome Colors",
-                                "Allow Custom Colors to override terrain and "
-                                        + "biome tints.",
+                        .addOption(booleanOption(builder, "colors_biome_enabled",
                                 ArgusConfigDefaults.BIOME_COLORS_ENABLED,
                                 this.storage::setBiomeColorsEnabled,
                                 this.storage::getBiomeColorsEnabled,
                                 OptionFlag.REQUIRES_RENDERER_RELOAD))
-                        .addOption(booleanOption(builder,
-                                "colors_sky_enabled", "Sky and Fog Colors",
-                                "Allow Custom Colors to override sky and fog "
-                                        + "color targets.",
+                        .addOption(booleanOption(builder, "colors_sky_enabled",
                                 ArgusConfigDefaults.SKY_COLORS_ENABLED,
                                 this.storage::setSkyColorsEnabled,
                                 this.storage::getSkyColorsEnabled)))
                 .addOptionGroup(builder.createOptionGroup()
-                        .setName(Component.literal("Fog"))
-                        .addOption(booleanOption(builder,
-                                "fog_enabled", "Fog",
-                                "Render vanilla fog distances.",
+                        .setName(Component.translatable("argus.config.group.fog"))
+                        .addOption(booleanOption(builder, "fog_enabled",
                                 ArgusConfigDefaults.FOG_ENABLED,
                                 this.storage::setFogEnabled,
                                 this.storage::getFogEnabled))
-                        .addOption(booleanOption(builder,
-                                "fog_air", "Air Fog",
-                                "Render atmospheric fog outside fluids.",
+                        .addOption(booleanOption(builder, "fog_air",
                                 ArgusConfigDefaults.FOG_AIR,
                                 this.storage::setFogAir,
                                 this.storage::getFogAir))
-                        .addOption(booleanOption(builder,
-                                "fog_water", "Water Fog",
-                                "Render water fog.",
+                        .addOption(booleanOption(builder, "fog_water",
                                 ArgusConfigDefaults.FOG_WATER,
                                 this.storage::setFogWater,
                                 this.storage::getFogWater))
-                        .addOption(booleanOption(builder,
-                                "fog_lava", "Lava Fog",
-                                "Render lava fog.",
+                        .addOption(booleanOption(builder, "fog_lava",
                                 ArgusConfigDefaults.FOG_LAVA,
                                 this.storage::setFogLava,
                                 this.storage::getFogLava))
-                        .addOption(booleanOption(builder,
-                                "fog_powder_snow", "Powder Snow Fog",
-                                "Render powder snow fog.",
+                        .addOption(booleanOption(builder, "fog_powder_snow",
                                 ArgusConfigDefaults.FOG_POWDER_SNOW,
                                 this.storage::setFogPowderSnow,
                                 this.storage::getFogPowderSnow)));
     }
 
-    private net.caffeinemc.mods.sodium.api.config.structure.OptionPageBuilder
-    animationsPage(ConfigBuilder builder) {
+    private OptionPageBuilder animationsPage(ConfigBuilder builder) {
         return builder.createOptionPage()
-                .setName(Component.literal("Animations"))
+                .setName(Component.translatable("argus.config.page.animations"))
                 .addOptionGroup(builder.createOptionGroup()
-                        .setName(Component.literal("Texture Animations"))
-                        .addOption(booleanOption(builder,
-                                "animations_enabled", "Animations",
-                                "Tick vanilla atlas sprite animations and "
-                                        + "Argus custom animations.",
+                        .setName(Component.translatable("argus.config.group.texture_animations"))
+                        .addOption(booleanOption(builder, "animations_enabled",
                                 ArgusConfigDefaults.ANIMATIONS_ENABLED,
                                 this.storage::setAnimationsEnabled,
                                 this.storage::getAnimationsEnabled))
-                        .addOption(booleanOption(builder,
-                                "animation_water", "Water",
-                                "Tick water texture animations.",
+                        .addOption(booleanOption(builder, "animation_water",
                                 ArgusConfigDefaults.ANIMATION_WATER,
                                 this.storage::setAnimationWater,
                                 this.storage::getAnimationWater))
-                        .addOption(booleanOption(builder,
-                                "animation_lava", "Lava",
-                                "Tick lava texture animations.",
+                        .addOption(booleanOption(builder, "animation_lava",
                                 ArgusConfigDefaults.ANIMATION_LAVA,
                                 this.storage::setAnimationLava,
                                 this.storage::getAnimationLava))
-                        .addOption(booleanOption(builder,
-                                "animation_fire", "Fire",
-                                "Tick fire texture animations.",
+                        .addOption(booleanOption(builder, "animation_fire",
                                 ArgusConfigDefaults.ANIMATION_FIRE,
                                 this.storage::setAnimationFire,
                                 this.storage::getAnimationFire))
-                        .addOption(booleanOption(builder,
-                                "animation_portal", "Portal",
-                                "Tick portal texture animations.",
+                        .addOption(booleanOption(builder, "animation_portal",
                                 ArgusConfigDefaults.ANIMATION_PORTAL,
                                 this.storage::setAnimationPortal,
                                 this.storage::getAnimationPortal))
-                        .addOption(booleanOption(builder,
-                                "animation_sculk_sensor", "Sculk Sensor",
-                                "Tick sculk sensor texture animations.",
+                        .addOption(booleanOption(builder, "animation_sculk_sensor",
                                 ArgusConfigDefaults.ANIMATION_SCULK_SENSOR,
                                 this.storage::setAnimationSculkSensor,
                                 this.storage::getAnimationSculkSensor))
-                        .addOption(booleanOption(builder,
-                                "animation_blocks", "Other Blocks",
-                                "Tick remaining block texture animations.",
+                        .addOption(booleanOption(builder, "animation_blocks",
                                 ArgusConfigDefaults.ANIMATION_BLOCKS,
                                 this.storage::setAnimationBlocks,
                                 this.storage::getAnimationBlocks))
-                        .addOption(integerOption(builder,
-                                "custom_animations_mipmap_distance",
-                                "Custom Animation Mipmap Distance",
-                                "Controls how many mipmap levels Argus "
-                                        + "updates for custom animations.",
-                                ArgusConfigDefaults
-                                        .CUSTOM_ANIMATION_MIPMAP_DISTANCE,
+                        .addOption(integerOption(builder, "custom_animations_mipmap_distance",
+                                ArgusConfigDefaults.CUSTOM_ANIMATION_MIPMAP_DISTANCE,
                                 0, 4, 1,
-                                this.storage
-                                        ::setCustomAnimationMipmapDistance,
-                                this.storage
-                                        ::getCustomAnimationMipmapDistance)));
+                                this.storage::setCustomAnimationMipmapDistance,
+                                this.storage::getCustomAnimationMipmapDistance)));
     }
 
-    private net.caffeinemc.mods.sodium.api.config.structure.OptionPageBuilder
-    particlesPage(ConfigBuilder builder) {
+    private OptionPageBuilder particlesPage(ConfigBuilder builder) {
         return builder.createOptionPage()
-                .setName(Component.literal("Particles"))
+                .setName(Component.translatable("argus.config.page.particles"))
                 .addOptionGroup(builder.createOptionGroup()
-                        .setName(Component.literal("Particle Spawning"))
-                        .addOption(booleanOption(builder,
-                                "particle_rain_splash", "Rain Splash",
-                                "Allow rain splash particles.",
+                        .setName(Component.translatable("argus.config.group.particle_spawning"))
+                        .addOption(booleanOption(builder, "particle_rain_splash",
                                 ArgusConfigDefaults.PARTICLE_RAIN_SPLASH,
                                 this.storage::setParticleRainSplash,
                                 this.storage::getParticleRainSplash))
-                        .addOption(booleanOption(builder,
-                                "particle_block_break", "Block Break",
-                                "Allow terrain block break particles.",
+                        .addOption(booleanOption(builder, "particle_block_break",
                                 ArgusConfigDefaults.PARTICLE_BLOCK_BREAK,
                                 this.storage::setParticleBlockBreak,
                                 this.storage::getParticleBlockBreak))
-                        .addOption(booleanOption(builder,
-                                "particle_block_breaking", "Block Breaking",
-                                "Allow block marker and hit particles.",
+                        .addOption(booleanOption(builder, "particle_block_breaking",
                                 ArgusConfigDefaults.PARTICLE_BLOCK_BREAKING,
                                 this.storage::setParticleBlockBreaking,
                                 this.storage::getParticleBlockBreaking))
-                        .addOption(booleanOption(builder,
-                                "particle_explosion", "Explosions",
-                                "Allow explosion and poof particles.",
+                        .addOption(booleanOption(builder, "particle_explosion",
                                 ArgusConfigDefaults.PARTICLE_EXPLOSION,
                                 this.storage::setParticleExplosion,
                                 this.storage::getParticleExplosion))
-                        .addOption(booleanOption(builder,
-                                "particle_water", "Water",
-                                "Allow underwater water particles.",
+                        .addOption(booleanOption(builder, "particle_water",
                                 ArgusConfigDefaults.PARTICLE_WATER,
                                 this.storage::setParticleWater,
                                 this.storage::getParticleWater))
-                        .addOption(booleanOption(builder,
-                                "particle_smoke", "Smoke",
-                                "Allow smoke and large smoke particles.",
+                        .addOption(booleanOption(builder, "particle_smoke",
                                 ArgusConfigDefaults.PARTICLE_SMOKE,
                                 this.storage::setParticleSmoke,
                                 this.storage::getParticleSmoke))
-                        .addOption(booleanOption(builder,
-                                "particle_potion", "Potion",
-                                "Allow potion, effect and witch particles.",
+                        .addOption(booleanOption(builder, "particle_potion",
                                 ArgusConfigDefaults.PARTICLE_POTION,
                                 this.storage::setParticlePotion,
                                 this.storage::getParticlePotion))
-                        .addOption(booleanOption(builder,
-                                "particle_portal", "Portal",
-                                "Allow portal particles.",
+                        .addOption(booleanOption(builder, "particle_portal",
                                 ArgusConfigDefaults.PARTICLE_PORTAL,
                                 this.storage::setParticlePortal,
                                 this.storage::getParticlePortal))
-                        .addOption(booleanOption(builder,
-                                "particle_flame", "Flame",
-                                "Allow flame and soul flame particles.",
+                        .addOption(booleanOption(builder, "particle_flame",
                                 ArgusConfigDefaults.PARTICLE_FLAME,
                                 this.storage::setParticleFlame,
                                 this.storage::getParticleFlame))
-                        .addOption(booleanOption(builder,
-                                "particle_redstone", "Redstone",
-                                "Allow redstone dust particles.",
+                        .addOption(booleanOption(builder, "particle_redstone",
                                 ArgusConfigDefaults.PARTICLE_REDSTONE,
                                 this.storage::setParticleRedstone,
                                 this.storage::getParticleRedstone))
-                        .addOption(booleanOption(builder,
-                                "particle_dripping", "Dripping",
-                                "Allow dripping water and lava particles.",
+                        .addOption(booleanOption(builder, "particle_dripping",
                                 ArgusConfigDefaults.PARTICLE_DRIPPING,
                                 this.storage::setParticleDripping,
                                 this.storage::getParticleDripping))
-                        .addOption(booleanOption(builder,
-                                "particle_firework", "Fireworks",
-                                "Allow firework particles.",
+                        .addOption(booleanOption(builder, "particle_firework",
                                 ArgusConfigDefaults.PARTICLE_FIREWORK,
                                 this.storage::setParticleFirework,
                                 this.storage::getParticleFirework)));
     }
 
-    private net.caffeinemc.mods.sodium.api.config.structure.OptionPageBuilder
-    entitiesPage(ConfigBuilder builder) {
+    private OptionPageBuilder entitiesPage(ConfigBuilder builder) {
         return builder.createOptionPage()
-                .setName(Component.literal("Entities"))
+                .setName(Component.translatable("argus.config.page.entities"))
                 .addOptionGroup(builder.createOptionGroup()
-                        .setName(Component.literal("Entity Rendering"))
-                        .addOption(booleanOption(builder,
-                                "entity_name_tags_enabled", "Name Tags",
-                                "Render entity name tags.",
-                                ArgusConfigDefaults
-                                        .ENTITY_NAME_TAGS_ENABLED,
+                        .setName(Component.translatable("argus.config.group.entity_rendering"))
+                        .addOption(booleanOption(builder, "entity_name_tags_enabled",
+                                ArgusConfigDefaults.ENTITY_NAME_TAGS_ENABLED,
                                 this.storage::setEntityNameTagsEnabled,
                                 this.storage::getEntityNameTagsEnabled))
-                        .addOption(booleanOption(builder,
-                                "entity_player_name_tags", "Player Names",
-                                "Render player name tags.",
-                                ArgusConfigDefaults
-                                        .ENTITY_PLAYER_NAME_TAGS,
+                        .addOption(booleanOption(builder, "entity_player_name_tags",
+                                ArgusConfigDefaults.ENTITY_PLAYER_NAME_TAGS,
                                 this.storage::setEntityPlayerNameTags,
                                 this.storage::getEntityPlayerNameTags))
-                        .addOption(booleanOption(builder,
-                                "entity_item_frames", "Item Frames",
-                                "Render item frames.",
+                        .addOption(booleanOption(builder, "entity_item_frames",
                                 ArgusConfigDefaults.ENTITY_ITEM_FRAMES,
                                 this.storage::setEntityItemFrames,
                                 this.storage::getEntityItemFrames))
-                        .addOption(booleanOption(builder,
-                                "entity_paintings", "Paintings",
-                                "Render paintings.",
+                        .addOption(booleanOption(builder, "entity_paintings",
                                 ArgusConfigDefaults.ENTITY_PAINTINGS,
                                 this.storage::setEntityPaintings,
                                 this.storage::getEntityPaintings))
-                        .addOption(booleanOption(builder,
-                                "entity_piston_animations", "Pistons",
-                                "Render moving piston block entities.",
-                                ArgusConfigDefaults
-                                        .ENTITY_PISTON_ANIMATIONS,
+                        .addOption(booleanOption(builder, "entity_piston_animations",
+                                ArgusConfigDefaults.ENTITY_PISTON_ANIMATIONS,
                                 this.storage::setEntityPistonAnimations,
                                 this.storage::getEntityPistonAnimations))
-                        .addOption(booleanOption(builder,
-                                "entity_beacon_beam", "Beacon Beam",
-                                "Render beacon beams.",
+                        .addOption(booleanOption(builder, "entity_beacon_beam",
                                 ArgusConfigDefaults.ENTITY_BEACON_BEAM,
                                 this.storage::setEntityBeaconBeam,
                                 this.storage::getEntityBeaconBeam))
-                        .addOption(booleanOption(builder,
-                                "entity_enchanting_table_book",
-                                "Enchanting Book",
-                                "Render the enchanting table book.",
-                                ArgusConfigDefaults
-                                        .ENTITY_ENCHANTING_TABLE_BOOK,
+                        .addOption(booleanOption(builder, "entity_enchanting_table_book",
+                                ArgusConfigDefaults.ENTITY_ENCHANTING_TABLE_BOOK,
                                 this.storage::setEntityEnchantingTableBook,
                                 this.storage::getEntityEnchantingTableBook)));
     }
 
-    private net.caffeinemc.mods.sodium.api.config.structure.OptionPageBuilder
-    hudPage(ConfigBuilder builder) {
+    private OptionPageBuilder hudPage(ConfigBuilder builder) {
         return builder.createOptionPage()
-                .setName(Component.literal("HUD"))
+                .setName(Component.translatable("argus.config.page.hud"))
                 .addOptionGroup(builder.createOptionGroup()
-                        .setName(Component.literal("Overlay"))
-                        .addOption(booleanOption(builder,
-                                "hud_fps", "FPS",
-                                "Show Argus's compact FPS overlay.",
+                        .setName(Component.translatable("argus.config.group.overlay"))
+                        .addOption(booleanOption(builder, "hud_fps",
                                 ArgusConfigDefaults.SHOW_FPS,
                                 this.storage::setShowFps,
                                 this.storage::getShowFps))
-                        .addOption(booleanOption(builder,
-                                "hud_fps_extended", "Extended FPS",
-                                "Show frame time next to FPS.",
+                        .addOption(booleanOption(builder, "hud_fps_extended",
                                 ArgusConfigDefaults.SHOW_FPS_EXTENDED,
                                 this.storage::setShowFpsExtended,
                                 this.storage::getShowFpsExtended))
-                        .addOption(booleanOption(builder,
-                                "hud_coords", "Coordinates",
-                                "Show player coordinates.",
+                        .addOption(booleanOption(builder, "hud_coords",
                                 ArgusConfigDefaults.SHOW_COORDS,
                                 this.storage::setShowCoords,
                                 this.storage::getShowCoords))
-                        .addOption(enumOption(builder,
-                                "hud_corner", "Corner",
-                                "Screen corner for the Argus HUD overlay.",
+                        .addOption(enumOption(builder, "hud_corner",
                                 OverlayCorner.class,
                                 ArgusConfigDefaults.OVERLAY_CORNER,
                                 this.storage::setOverlayCorner,
                                 this.storage::getOverlayCorner))
-                        .addOption(enumOption(builder,
-                                "hud_text_contrast", "Text Contrast",
-                                "Contrast style for Argus HUD text.",
+                        .addOption(enumOption(builder, "hud_text_contrast",
                                 TextContrast.class,
                                 ArgusConfigDefaults.TEXT_CONTRAST,
                                 this.storage::setTextContrast,
                                 this.storage::getTextContrast)));
     }
 
-    private net.caffeinemc.mods.sodium.api.config.structure.OptionPageBuilder
-    extrasPage(ConfigBuilder builder) {
+    private OptionPageBuilder extrasPage(ConfigBuilder builder) {
         return builder.createOptionPage()
-                .setName(Component.literal("Extras"))
+                .setName(Component.translatable("argus.config.page.extras"))
                 .addOptionGroup(builder.createOptionGroup()
-                        .setName(Component.literal("Toasts"))
-                        .addOption(booleanOption(builder,
-                                "toast_advancement", "Advancement Toasts",
-                                "Show advancement toasts.",
+                        .setName(Component.translatable("argus.config.group.toasts"))
+                        .addOption(booleanOption(builder, "toast_advancement",
                                 ArgusConfigDefaults.TOAST_ADVANCEMENT,
                                 this.storage::setToastAdvancement,
                                 this.storage::getToastAdvancement))
-                        .addOption(booleanOption(builder,
-                                "toast_recipe", "Recipe Toasts",
-                                "Show recipe toasts.",
+                        .addOption(booleanOption(builder, "toast_recipe",
                                 ArgusConfigDefaults.TOAST_RECIPE,
                                 this.storage::setToastRecipe,
                                 this.storage::getToastRecipe))
-                        .addOption(booleanOption(builder,
-                                "toast_system", "System Toasts",
-                                "Show system toasts.",
+                        .addOption(booleanOption(builder, "toast_system",
                                 ArgusConfigDefaults.TOAST_SYSTEM,
                                 this.storage::setToastSystem,
                                 this.storage::getToastSystem))
-                        .addOption(booleanOption(builder,
-                                "toast_tutorial", "Tutorial Toasts",
-                                "Show tutorial toasts.",
+                        .addOption(booleanOption(builder, "toast_tutorial",
                                 ArgusConfigDefaults.TOAST_TUTORIAL,
                                 this.storage::setToastTutorial,
                                 this.storage::getToastTutorial)))
                 .addOptionGroup(builder.createOptionGroup()
-                        .setName(Component.literal("Movement"))
-                        .addOption(booleanOption(builder,
-                                "instant_sneak", "Instant Sneak",
-                                "Snap the client camera to crouch height "
-                                        + "without changing gameplay state.",
+                        .setName(Component.translatable("argus.config.group.movement"))
+                        .addOption(booleanOption(builder, "instant_sneak",
                                 ArgusConfigDefaults.INSTANT_SNEAK,
                                 this.storage::setInstantSneak,
                                 this.storage::getInstantSneak)));
     }
 
-    private net.caffeinemc.mods.sodium.api.config.structure.OptionPageBuilder
-    betterGrassPage(ConfigBuilder builder) {
+    private OptionPageBuilder betterGrassPage(ConfigBuilder builder) {
         return builder.createOptionPage()
-                .setName(Component.literal("Better Grass"))
+                .setName(Component.translatable("argus.config.page.better_grass"))
                 .addOptionGroup(builder.createOptionGroup()
-                        .setName(Component.literal("Grass Sides"))
+                        .setName(Component.translatable("argus.config.group.grass_sides"))
                         .addOption(builder.createEnumOption(
                                         id("better_grass_mode"),
                                         BetterGrassMode.class)
-                                .setName(Component.literal("Mode"))
-                                .setTooltip(Component.literal(
-                                        "Off keeps vanilla sides, Fast uses "
-                                                + "top textures on all sides, "
-                                                + "Fancy only extends over "
-                                                + "matching neighbour edges."))
-                                .setElementNameProvider(
-                                        EnumOptionBuilder.nameProviderFrom(
-                                                Component.literal("Off"),
-                                                Component.literal("Fast"),
-                                                Component.literal("Fancy")))
+                                .setName(Component.translatable("argus.config.option.better_grass_mode"))
+                                .setTooltip(Component.translatable("argus.config.option.better_grass_mode.desc"))
+                                .setElementNameProvider(mode -> Component.translatable(
+                                        "argus.config.enum.better_grass_mode." + mode.name().toLowerCase(Locale.ROOT)))
                                 .setStorageHandler(this.storageHandler)
                                 .setBinding(this.storage::setBetterGrassMode,
                                         this.storage::getBetterGrassMode)
-                                .setDefaultValue(
-                                        ArgusConfigDefaults
-                                                .BETTER_GRASS_MODE)
-                                .setFlags(
-                                        OptionFlag.REQUIRES_RENDERER_RELOAD))
-                        .addOption(booleanOption(builder,
-                                "better_grass_ignore_resource_pack",
-                                "Ignore Resource Pack",
-                                "Use Argus's Better Grass toggles and "
-                                        + "vanilla textures even when a pack "
-                                        + "provides bettergrass.properties.",
-                                ArgusConfigDefaults
-                                        .BETTER_GRASS_IGNORE_RESOURCE_PACK,
-                                this.storage
-                                        ::setBetterGrassIgnoreResourcePack,
-                                this.storage
-                                        ::getBetterGrassIgnoreResourcePack,
+                                .setDefaultValue(ArgusConfigDefaults.BETTER_GRASS_MODE)
+                                .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD))
+                        .addOption(booleanOption(builder, "better_grass_ignore_resource_pack",
+                                ArgusConfigDefaults.BETTER_GRASS_IGNORE_RESOURCE_PACK,
+                                this.storage::setBetterGrassIgnoreResourcePack,
+                                this.storage::getBetterGrassIgnoreResourcePack,
                                 OptionFlag.REQUIRES_RENDERER_RELOAD))
-                        .addOption(betterGrassBlockOption(builder,
-                                "better_grass_grass_block", "Grass Block",
-                                "Apply Better Grass to grass side faces.",
-                                ArgusConfigDefaults
-                                        .BETTER_GRASS_GRASS_BLOCK,
+                        .addOption(betterGrassBlockOption(builder, "better_grass_grass_block",
+                                ArgusConfigDefaults.BETTER_GRASS_GRASS_BLOCK,
                                 this.storage::setBetterGrassGrassBlock,
                                 this.storage::getBetterGrassGrassBlock))
-                        .addOption(betterGrassBlockOption(builder,
-                                "better_grass_snowy_grass_block",
-                                "Snowy Dirt Covers",
-                                "Apply snow sides to snowy grass, mycelium "
-                                        + "and podzol faces.",
-                                ArgusConfigDefaults
-                                        .BETTER_GRASS_SNOWY_GRASS_BLOCK,
+                        .addOption(betterGrassBlockOption(builder, "better_grass_snowy_grass_block",
+                                ArgusConfigDefaults.BETTER_GRASS_SNOWY_GRASS_BLOCK,
                                 this.storage::setBetterGrassSnowyGrassBlock,
                                 this.storage::getBetterGrassSnowyGrassBlock))
-                        .addOption(betterGrassBlockOption(builder,
-                                "better_grass_dirt_path", "Dirt Path",
-                                "Apply Better Grass to dirt path faces.",
+                        .addOption(betterGrassBlockOption(builder, "better_grass_dirt_path",
                                 ArgusConfigDefaults.BETTER_GRASS_DIRT_PATH,
                                 this.storage::setBetterGrassDirtPath,
                                 this.storage::getBetterGrassDirtPath))
-                        .addOption(betterGrassBlockOption(builder,
-                                "better_grass_farmland", "Farmland",
-                                "Apply Better Grass to farmland faces.",
+                        .addOption(betterGrassBlockOption(builder, "better_grass_farmland",
                                 ArgusConfigDefaults.BETTER_GRASS_FARMLAND,
                                 this.storage::setBetterGrassFarmland,
                                 this.storage::getBetterGrassFarmland))
-                        .addOption(betterGrassBlockOption(builder,
-                                "better_grass_mycelium", "Mycelium",
-                                "Apply Better Grass to mycelium faces.",
+                        .addOption(betterGrassBlockOption(builder, "better_grass_mycelium",
                                 ArgusConfigDefaults.BETTER_GRASS_MYCELIUM,
                                 this.storage::setBetterGrassMycelium,
                                 this.storage::getBetterGrassMycelium))
-                        .addOption(betterGrassBlockOption(builder,
-                                "better_grass_podzol", "Podzol",
-                                "Apply Better Grass to podzol faces.",
+                        .addOption(betterGrassBlockOption(builder, "better_grass_podzol",
                                 ArgusConfigDefaults.BETTER_GRASS_PODZOL,
                                 this.storage::setBetterGrassPodzol,
                                 this.storage::getBetterGrassPodzol))
-                        .addOption(betterGrassBlockOption(builder,
-                                "better_grass_crimson_nylium",
-                                "Crimson Nylium",
-                                "Apply Better Grass to crimson nylium.",
-                                ArgusConfigDefaults
-                                        .BETTER_GRASS_CRIMSON_NYLIUM,
+                        .addOption(betterGrassBlockOption(builder, "better_grass_crimson_nylium",
+                                ArgusConfigDefaults.BETTER_GRASS_CRIMSON_NYLIUM,
                                 this.storage::setBetterGrassCrimsonNylium,
                                 this.storage::getBetterGrassCrimsonNylium))
-                        .addOption(betterGrassBlockOption(builder,
-                                "better_grass_warped_nylium",
-                                "Warped Nylium",
-                                "Apply Better Grass to warped nylium.",
-                                ArgusConfigDefaults
-                                        .BETTER_GRASS_WARPED_NYLIUM,
+                        .addOption(betterGrassBlockOption(builder, "better_grass_warped_nylium",
+                                ArgusConfigDefaults.BETTER_GRASS_WARPED_NYLIUM,
                                 this.storage::setBetterGrassWarpedNylium,
                                 this.storage::getBetterGrassWarpedNylium)));
     }
 
     private BooleanOptionBuilder betterGrassBlockOption(ConfigBuilder builder,
                                                         String path,
-                                                        String name,
-                                                        String tooltip,
                                                         boolean defaultValue,
                                                         Consumer<Boolean> setter,
                                                         Supplier<Boolean> getter) {
-        return booleanOption(builder, path, name, tooltip, defaultValue,
-                setter, getter, OptionFlag.REQUIRES_RENDERER_RELOAD);
+        return booleanOption(builder, path, defaultValue, setter, getter,
+                OptionFlag.REQUIRES_RENDERER_RELOAD);
     }
 
     private BooleanOptionBuilder booleanOption(ConfigBuilder builder,
                                                String path,
-                                               String name,
-                                               String tooltip,
                                                boolean defaultValue,
                                                Consumer<Boolean> setter,
                                                Supplier<Boolean> getter,
                                                OptionFlag... flags) {
         return builder.createBooleanOption(id(path))
-                .setName(Component.literal(name))
-                .setTooltip(Component.literal(tooltip))
+                .setName(Component.translatable("argus.config.option." + path))
+                .setTooltip(Component.translatable("argus.config.option." + path + ".desc"))
                 .setStorageHandler(this.storageHandler)
                 .setBinding(setter, getter)
                 .setDefaultValue(defaultValue)
@@ -766,25 +485,29 @@ public final class ArgusSodiumConfigEntryPoint implements ConfigEntryPoint {
     private BooleanOptionBuilder entityTextureOption(
             ConfigBuilder builder,
             String path,
-            String name,
-            String tooltip,
             boolean defaultValue,
             Consumer<Boolean> setter,
             Supplier<Boolean> getter,
             OptionFlag... flags) {
         boolean etfLoaded = ClientEnvironment.isModLoaded(ETF_MOD_ID);
-        String finalTooltip = etfLoaded
-                ? tooltip + ETF_COMPAT_TOOLTIP
-                : tooltip;
-        return booleanOption(builder, path, name, finalTooltip, defaultValue,
-                setter, getter, flags)
+        Component tooltip = etfLoaded
+                ? Component.translatable("argus.config.option." + path + ".desc")
+                        .append(" ")
+                        .append(Component.translatable("argus.config.compat.etf_installed"))
+                : Component.translatable("argus.config.option." + path + ".desc");
+
+        return builder.createBooleanOption(id(path))
+                .setName(Component.translatable("argus.config.option." + path))
+                .setTooltip(tooltip)
+                .setStorageHandler(this.storageHandler)
+                .setBinding(setter, getter)
+                .setDefaultValue(defaultValue)
+                .setFlags(flags)
                 .setEnabled(!etfLoaded);
     }
 
     private IntegerOptionBuilder integerOption(ConfigBuilder builder,
                                                String path,
-                                               String name,
-                                               String tooltip,
                                                int defaultValue,
                                                int min,
                                                int max,
@@ -793,58 +516,38 @@ public final class ArgusSodiumConfigEntryPoint implements ConfigEntryPoint {
                                                Supplier<Integer> getter,
                                                OptionFlag... flags) {
         return builder.createIntegerOption(id(path))
-                .setName(Component.literal(name))
-                .setTooltip(Component.literal(tooltip))
+                .setName(Component.translatable("argus.config.option." + path))
+                .setTooltip(Component.translatable("argus.config.option." + path + ".desc"))
                 .setStorageHandler(this.storageHandler)
                 .setBinding(setter, getter)
                 .setDefaultValue(defaultValue)
                 .setRange(min, max, step)
-                .setValueFormatter(value -> Component.literal(
-                        Integer.toString(value)))
+                .setValueFormatter(value -> Component.literal(Integer.toString(value)))
                 .setFlags(flags);
     }
 
     private <T extends Enum<T>> EnumOptionBuilder<T> enumOption(
             ConfigBuilder builder,
             String path,
-            String name,
-            String tooltip,
             Class<T> type,
             T defaultValue,
             Consumer<T> setter,
             Supplier<T> getter,
             OptionFlag... flags) {
+        String enumPrefix = "argus.config.enum." + type.getSimpleName().toLowerCase(Locale.ROOT) + ".";
         return builder.createEnumOption(id(path), type)
-                .setName(Component.literal(name))
-                .setTooltip(Component.literal(tooltip))
-                .setElementNameProvider(value -> Component.literal(
-                        enumDisplayName(value.name())))
+                .setName(Component.translatable("argus.config.option." + path))
+                .setTooltip(Component.translatable("argus.config.option." + path + ".desc"))
+                .setElementNameProvider(value -> Component.translatable(
+                        enumPrefix + value.name().toLowerCase(Locale.ROOT)))
                 .setStorageHandler(this.storageHandler)
                 .setBinding(setter, getter)
                 .setDefaultValue(defaultValue)
                 .setFlags(flags);
     }
 
-    private static String enumDisplayName(String name) {
-        String[] parts = name.toLowerCase().split("_");
-        StringBuilder out = new StringBuilder();
-        for (String part : parts) {
-            if (part.isEmpty()) {
-                continue;
-            }
-            if (!out.isEmpty()) {
-                out.append(' ');
-            }
-            out.append(Character.toUpperCase(part.charAt(0)));
-            if (part.length() > 1) {
-                out.append(part.substring(1));
-            }
-        }
-        return out.toString();
-    }
-
     private static Identifier id(String path) {
-        return Identifier.fromNamespaceAndPath(MOD_ID, path);
+        return Identifier.fromNamespaceAndPath(Constants.MOD_ID, path);
     }
 
     private static String argusVersion() {
@@ -859,8 +562,7 @@ public final class ArgusSodiumConfigEntryPoint implements ConfigEntryPoint {
         }
 
         private void update(Consumer<ArgusConfig.Builder> updater) {
-            ArgusConfig.Builder builder = ArgusConfigHolder.get()
-                    .toBuilder();
+            ArgusConfig.Builder builder = ArgusConfigHolder.get().toBuilder();
             updater.accept(builder);
             ArgusConfigHolder.replace(builder.build());
         }

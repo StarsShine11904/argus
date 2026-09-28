@@ -5,6 +5,7 @@ import com.argus.client.platform.ClientEnvironment;
 import com.argus.cit.CitParseResult;
 import com.argus.cit.CitRuleParser;
 import com.argus.cit.CitRuleSet;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
@@ -38,6 +39,7 @@ public final class CitReloadListener implements PreparableReloadListener {
 
     public static final Identifier ID =
             Identifier.fromNamespaceAndPath(Constants.MOD_ID, "cit_reload");
+
     @Override
     public CompletableFuture<Void> reload(
             SharedState currentReload,
@@ -67,18 +69,30 @@ public final class CitReloadListener implements PreparableReloadListener {
                 sources.add(new CitRuleParser.RuleSource(
                         readAll(reader), loc.toString()));
             } catch (Exception e) {
-                LOGGER.warn("[{}] failed to read CIT file {}: {}",
-                        Constants.MOD_NAME, loc, e.getMessage());
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.cit.reload.read_failed",
+                        Constants.MOD_NAME,
+                        loc,
+                        e.getMessage()
+                ).getString());
             }
         }
         CitParseResult parsed = CitRuleParser.parseAll(sources);
         for (CitParseResult.Error error : parsed.errors()) {
-            LOGGER.warn("[{}] skipping malformed CIT file {}: {}",
-                    Constants.MOD_NAME, error.sourceFile(), error.message());
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.cit.reload.malformed_file",
+                    Constants.MOD_NAME,
+                    error.sourceFile(),
+                    error.message()
+            ).getString());
         }
         CitRuleSet ruleSet = CitRuleSet.of(parsed.rules());
-        LOGGER.info("[{}] CIT reload: {} parsed rules from {} files",
-                Constants.MOD_NAME, ruleSet.all().size(), sources.size());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.cit.reload.summary",
+                Constants.MOD_NAME,
+                ruleSet.all().size(),
+                sources.size()
+        ).getString());
         return ruleSet;
     }
 
@@ -86,13 +100,17 @@ public final class CitReloadListener implements PreparableReloadListener {
         CitClientSnapshot snapshot = CitClientSnapshot.from(ruleSet);
         CitRuntime.replace(snapshot);
         if (ClientEnvironment.get().isModLoaded("citresewn")) {
-            LOGGER.warn("[{}] CIT Resewn detected; Argus CIT snapshot was "
-                            + "loaded but runtime selection is disabled",
-                    Constants.MOD_NAME);
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.cit.reload.citresewn_conflict",
+                    Constants.MOD_NAME
+            ).getString());
         }
-        LOGGER.info("[{}] CIT snapshot installed: {} shared rules, active={}",
-                Constants.MOD_NAME, ruleSet.all().size(),
-                !snapshot.isEmpty());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.cit.reload.installed",
+                Constants.MOD_NAME,
+                ruleSet.all().size(),
+                !snapshot.isEmpty()
+        ).getString());
     }
 
     private static String readAll(java.io.Reader reader)

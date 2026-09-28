@@ -8,6 +8,7 @@ import com.argus.cit.CitRuleParser;
 import com.argus.resource.NamespaceId;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.client.renderer.texture.atlas.SpriteSource;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -60,8 +61,12 @@ public record ArgusItemSpriteSource() implements SpriteSource {
                 sources.add(new CitRuleParser.RuleSource(
                         readAll(reader), loc.toString()));
             } catch (Exception e) {
-                LOGGER.warn("[{}] failed to read CIT sprite rule {}: {}",
-                        Constants.MOD_NAME, loc, e.getMessage());
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.cit.read_rule_failed",
+                        Constants.MOD_NAME,
+                        loc,
+                        e.getMessage()
+                ).getString());
             }
         }
         CitParseResult result = CitRuleParser.parseAll(sources);
@@ -76,8 +81,11 @@ public record ArgusItemSpriteSource() implements SpriteSource {
             }
         }
         if (added > 0) {
-            LOGGER.info("[{}] injected {} CIT sprites into the item atlas",
-                    Constants.MOD_NAME, added);
+            LOGGER.info("{}", Component.translatable(
+                    "argus.info.cit.sprites_injected",
+                    Constants.MOD_NAME,
+                    added
+            ).getString());
         }
     }
 

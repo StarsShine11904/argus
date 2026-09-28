@@ -4,6 +4,7 @@ import com.argus.customgui.CustomGuiReplacement;
 import com.argus.customgui.CustomGuiRule;
 import com.argus.customgui.CustomGuiRuleSet;
 import com.argus.resource.NamespaceId;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 import java.util.HashMap;
@@ -53,7 +54,8 @@ public final class CustomGuiClientSnapshot {
     private final CustomGuiRuleSet ruleSet;
 
     private CustomGuiClientSnapshot(CustomGuiRuleSet ruleSet) {
-        this.ruleSet = Objects.requireNonNull(ruleSet, "ruleSet");
+        this.ruleSet = Objects.requireNonNull(ruleSet, () ->
+                Component.translatable("argus.error.customgui.ruleset_null").getString());
     }
 
     public static CustomGuiClientSnapshot empty() {
@@ -73,6 +75,26 @@ public final class CustomGuiClientSnapshot {
 
     public CustomGuiRuleSet ruleSet() {
         return ruleSet;
+    }
+
+    /**
+     * 取得容器型別的本地化名稱 Component。
+     */
+    public static Component containerDisplayName(String container) {
+        if (container == null || container.isBlank()) {
+            return Component.translatable("argus.customgui.container.unknown");
+        }
+        return Component.translatable("argus.customgui.container." + container.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * 取得快照狀態摘要 Component（適合 Log、F3 或除錯介面）。
+     */
+    public Component toComponent() {
+        if (isEmpty()) {
+            return Component.translatable("argus.info.customgui.snapshot_empty");
+        }
+        return Component.translatable("argus.info.customgui.snapshot_summary", ruleSet.all().size());
     }
 
     CustomGuiScreenOverrides resolve(CustomGuiScreenContext context) {

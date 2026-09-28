@@ -3,6 +3,7 @@ package com.argus.client.atlas;
 import com.argus.Constants;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.client.renderer.texture.atlas.SpriteSource;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -59,8 +60,11 @@ public record ArgusEntitySpriteSource() implements SpriteSource {
             added++;
         }
         if (added > 0) {
-            LOGGER.info("[{}] injected {} Random Entity sprites into atlas",
-                    Constants.MOD_NAME, added);
+            LOGGER.info("{}", Component.translatable(
+                    "argus.info.atlas.random_entity_sprites_injected",
+                    Constants.MOD_NAME,
+                    added
+            ).getString());
         }
     }
 

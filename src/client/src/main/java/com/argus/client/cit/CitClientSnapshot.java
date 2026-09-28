@@ -4,6 +4,7 @@ import com.argus.cit.CitRule;
 import com.argus.cit.CitRuleSet;
 import com.argus.resource.NamespaceId;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 
@@ -35,7 +36,8 @@ public final class CitClientSnapshot {
 
     private CitClientSnapshot(CitRuleSet ruleSet,
                               IdentityHashMap<Item, CitRule[]> byItem) {
-        this.ruleSet = Objects.requireNonNull(ruleSet, "ruleSet");
+        this.ruleSet = Objects.requireNonNull(ruleSet, () ->
+                Component.translatable("argus.error.cit.ruleset_null").getString());
         this.byItem = new IdentityHashMap<>(byItem);
     }
 
@@ -44,7 +46,8 @@ public final class CitClientSnapshot {
     }
 
     public static CitClientSnapshot from(CitRuleSet ruleSet) {
-        Objects.requireNonNull(ruleSet, "ruleSet");
+        Objects.requireNonNull(ruleSet, () ->
+                Component.translatable("argus.error.cit.ruleset_null").getString());
         if (ruleSet.isEmpty()) {
             return EMPTY;
         }
@@ -72,8 +75,22 @@ public final class CitClientSnapshot {
         return byItem.isEmpty();
     }
 
+    public int size() {
+        return byItem.size();
+    }
+
     public CitRule[] rulesFor(Item item) {
         CitRule[] rules = byItem.get(item);
         return rules == null ? EMPTY_RULES : rules;
+    }
+
+    /**
+     * 取得快照狀態的本地化摘要 Component（適合 Log 或除錯介面使用）。
+     */
+    public Component toComponent() {
+        if (isEmpty()) {
+            return Component.translatable("argus.info.cit.snapshot_empty");
+        }
+        return Component.translatable("argus.info.cit.snapshot_summary", byItem.size());
     }
 }

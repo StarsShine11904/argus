@@ -1,9 +1,11 @@
 package com.argus.client.cem;
 
+import com.argus.Constants;
 import com.argus.cem.CemModel;
+import com.argus.client.platform.ClientEnvironment;
 import com.argus.config.ArgusConfigHolder;
 import com.argus.resource.NamespaceId;
-import com.argus.client.platform.ClientEnvironment;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,8 +62,10 @@ public final class CemRuntime {
         if (ClientEnvironment.isModLoaded("entity_model_features")) {
             if (!warnedEmf) {
                 warnedEmf = true;
-                LOGGER.warn("[Argus] EMF detected; Argus CEM runtime "
-                        + "selection is disabled");
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.cem.runtime.emf_conflict",
+                        Constants.MOD_NAME
+                ).getString());
             }
             return false;
         }

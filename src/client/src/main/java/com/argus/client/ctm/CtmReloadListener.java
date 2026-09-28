@@ -1,8 +1,8 @@
 package com.argus.client.ctm;
 
 import com.argus.Constants;
-import com.argus.ctm.CtmRegistry;
 import com.argus.ctm.CtmMaterialTable;
+import com.argus.ctm.CtmRegistry;
 import com.argus.ctm.CtmRule;
 import com.argus.ctm.CtmRuleParser;
 import com.argus.ctm.CtmRuleSet;
@@ -12,6 +12,7 @@ import com.argus.ctm.CtmTileResolver;
 import com.argus.platform.Platforms;
 import com.argus.resource.NamespaceId;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
@@ -66,6 +67,7 @@ public final class CtmReloadListener implements PreparableReloadListener {
 
     public static final Identifier ID =
             Identifier.fromNamespaceAndPath(Constants.MOD_ID, "ctm_reload");
+
     @Override
     public CompletableFuture<Void> reload(
             SharedState currentReload,
@@ -86,8 +88,11 @@ public final class CtmReloadListener implements PreparableReloadListener {
         List<CtmRuleParser.RuleSource> out = new ArrayList<>();
         scan(resourceManager, OPTIFINE_CTM, out);
         scan(resourceManager, CONTINUITY_CTM, out);
-        LOGGER.info("[{}] CTM reload: discovered {} rule files",
-                Constants.MOD_NAME, out.size());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.ctm.reload.discovered_files",
+                Constants.MOD_NAME,
+                out.size()
+        ).getString());
         return out;
     }
 
@@ -114,8 +119,12 @@ public final class CtmReloadListener implements PreparableReloadListener {
                 String sourceLabel = loc.toString();
                 out.add(new CtmRuleParser.RuleSource(body, sourceLabel));
             } catch (IOException e) {
-                LOGGER.warn("[{}] failed to read CTM rule file {}: {}",
-                        Constants.MOD_NAME, loc, e.getMessage());
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.ctm.reload.read_file_failed",
+                        Constants.MOD_NAME,
+                        loc,
+                        e.getMessage()
+                ).getString());
             }
         }
     }
@@ -132,13 +141,20 @@ public final class CtmReloadListener implements PreparableReloadListener {
         // the reload; the listener logs the failure and the
         // other files are still applied.
         CtmRuleSet ruleSet = CtmRuleParser.buildRuleSet(sources, parent,
-                (label, message, cause) -> LOGGER.warn(
-                        "[{}] skipping malformed CTM rule file {}: {}",
-                        Constants.MOD_NAME, label, message));
+                (label, message, cause) -> LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.ctm.reload.malformed_rule_file",
+                        Constants.MOD_NAME,
+                        label,
+                        message
+                ).getString()));
         CtmRegistry reg = Platforms.get().ctmRegistry();
         reg.replace(ruleSet);
-        LOGGER.info("[{}] CTM rule set installed: {} rules from {} files",
-                Constants.MOD_NAME, ruleSet.all().size(), sources.size());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.ctm.reload.ruleset_installed",
+                Constants.MOD_NAME,
+                ruleSet.all().size(),
+                sources.size()
+        ).getString());
         // Phase 7: build the per-rule tile atlas (the
         // renderer consults this on each quad to map a
         // concrete tileIndex -> argus sprite id). We
@@ -237,21 +253,27 @@ public final class CtmReloadListener implements PreparableReloadListener {
                     }
                 }
             } catch (RuntimeException e) {
-                LOGGER.warn("[{}] tile resolution failed for rule {}: {}",
-                        Constants.MOD_NAME, sourcePath, e.getMessage());
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.ctm.reload.tile_resolution_failed",
+                        Constants.MOD_NAME,
+                        sourcePath,
+                        e.getMessage()
+                ).getString());
             }
         }
         CtmTileAtlas atlas = CtmTileAtlas.of(entries);
         CtmTileAtlas.replace(atlas);
         CtmMaterialTable materialTable = CtmMaterialTable.of(atlas);
         CtmMaterialTable.replace(materialTable);
-        LOGGER.info("[{}] CTM tile atlas installed: {} entries, "
-                        + "{} numeric (injection) tiles, "
-                        + "{} generated fallback tiles, {} named tiles, "
-                        + "{} material entries",
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.ctm.reload.tile_atlas_installed",
                 Constants.MOD_NAME,
-                entries.size(), numericTiles, generatedFallbackTiles,
-                namedTiles, materialTable.size());
+                entries.size(),
+                numericTiles,
+                generatedFallbackTiles,
+                namedTiles,
+                materialTable.size()
+        ).getString());
         requestTerrainRebuild();
     }
 
@@ -265,8 +287,10 @@ public final class CtmReloadListener implements PreparableReloadListener {
                 minecraft.options,
                 minecraft.gameRenderer.mainCamera(),
                 minecraft.getBlockColors());
-        LOGGER.info("[{}] requested terrain rebuild after CTM material reload",
-                Constants.MOD_NAME);
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.ctm.reload.terrain_rebuild_requested",
+                Constants.MOD_NAME
+        ).getString());
     }
 
     private static String readAll(java.io.Reader r) throws IOException {

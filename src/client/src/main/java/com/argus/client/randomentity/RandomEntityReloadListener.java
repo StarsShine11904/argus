@@ -8,6 +8,7 @@ import com.argus.randomentity.RandomEntityRuleSet;
 import com.argus.randomentity.RandomEntityVariant;
 import com.argus.resource.NamespaceId;
 import com.argus.resource.PropertiesFile;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
@@ -19,8 +20,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -53,6 +54,7 @@ public final class RandomEntityReloadListener
     public static final Identifier ID =
             Identifier.fromNamespaceAndPath(Constants.MOD_ID,
                     "random_entities_reload");
+
     @Override
     public CompletableFuture<Void> reload(
             SharedState currentReload,
@@ -93,10 +95,11 @@ public final class RandomEntityReloadListener
                         propertyFiles++;
                     } catch (Exception e) {
                         errors++;
-                        LOGGER.warn("[{}] failed to parse Random Entities "
-                                        + "file {}: {}",
-                                Constants.MOD_NAME, group.properties,
-                                e.getMessage());
+                        LOGGER.warn("[{}] {}",
+                                Constants.MOD_NAME,
+                                Component.translatable(
+                                        "argus.log.random_entities.parse_file_failed",
+                                        group.properties, e.getMessage()).getString());
                     }
                 }
             }
@@ -108,17 +111,19 @@ public final class RandomEntityReloadListener
                         group.variants, properties));
             } catch (Exception e) {
                 errors++;
-                LOGGER.warn("[{}] skipping malformed Random Entities group "
-                                + "{}: {}",
-                        Constants.MOD_NAME, group.baseTexture,
-                        e.getMessage());
+                LOGGER.warn("[{}] {}",
+                        Constants.MOD_NAME,
+                        Component.translatable(
+                                "argus.log.random_entities.skip_group",
+                                group.baseTexture, e.getMessage()).getString());
             }
         }
         RandomEntityRuleSet rules = builder.build();
-        LOGGER.info("[{}] Random Entities reload: {} texture groups, {} "
-                        + "property files, {} known textures, {} errors",
-                Constants.MOD_NAME, rules.entries().size(), propertyFiles,
-                textures.size(), errors);
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.random_entities.reload_summary",
+                        rules.entries().size(), propertyFiles,
+                        textures.size(), errors).getString());
         return new LoadedRandomEntities(rules, textures, emissiveSuffix);
     }
 
@@ -165,9 +170,11 @@ public final class RandomEntityReloadListener
                          StandardCharsets.UTF_8)) {
                 return EmissiveProperties.parse(reader).suffix();
             } catch (Exception e) {
-                LOGGER.warn("[{}] failed to parse entity emissive settings "
-                                + "{}: {}",
-                        Constants.MOD_NAME, id, e.getMessage());
+                LOGGER.warn("[{}] {}",
+                        Constants.MOD_NAME,
+                        Component.translatable(
+                                "argus.log.random_entities.parse_emissive_failed",
+                                id, e.getMessage()).getString());
             }
         }
         return "_e";
@@ -178,15 +185,17 @@ public final class RandomEntityReloadListener
                 loaded.rules, RandomEntityRuntime.nextVersion(),
                 loaded.textures, loaded.emissiveSuffix));
         if (ClientEnvironment.get().isModLoaded("entity_texture_features")) {
-            LOGGER.warn("[{}] ETF detected; Entity Texture snapshot was "
-                            + "loaded but runtime selection is disabled",
-                    Constants.MOD_NAME);
+            LOGGER.warn("[{}] {}",
+                    Constants.MOD_NAME,
+                    Component.translatable("argus.log.random_entities.etf_conflict").getString());
         }
-        LOGGER.info("[{}] Entity Texture snapshot installed: {} random "
-                        + "groups, {} known textures, active={}",
-                Constants.MOD_NAME, loaded.rules.entries().size(),
-                loaded.textures.size(),
-                !loaded.rules.isEmpty() || !loaded.textures.isEmpty());
+        boolean active = !loaded.rules.isEmpty() || !loaded.textures.isEmpty();
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.random_entities.snapshot_installed",
+                        loaded.rules.entries().size(),
+                        loaded.textures.size(),
+                        active).getString());
     }
 
     private record LoadedRandomEntities(RandomEntityRuleSet rules,

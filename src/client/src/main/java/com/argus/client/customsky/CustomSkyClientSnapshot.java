@@ -1,9 +1,11 @@
 package com.argus.client.customsky;
 
+import com.argus.Constants;
 import com.argus.customsky.CustomSkyLayer;
 import com.argus.customsky.CustomSkyRuleSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.slf4j.Logger;
@@ -47,8 +49,12 @@ public final class CustomSkyClientSnapshot {
                     layer.source().namespace(), layer.source().path());
             if (manager.getResource(id).isEmpty()) {
                 if (logger != null) {
-                    logger.warn("[Argus] skipping Custom Sky layer {}: "
-                            + "missing source {}", layer.sourceFile(), id);
+                    logger.warn("{}", Component.translatable(
+                            "argus.warn.customsky.missing_source",
+                            Constants.MOD_NAME,
+                            layer.sourceFile(),
+                            id
+                    ).getString());
                 }
                 continue;
             }
@@ -79,6 +85,16 @@ public final class CustomSkyClientSnapshot {
 
     RuntimeLayer[] layersUnsafe() {
         return layers;
+    }
+
+    /**
+     * 取得自訂天空快照的本地化摘要 Component（適合除錯 HUD 或診斷日誌使用）。
+     */
+    public Component toComponent() {
+        if (isEmpty()) {
+            return Component.translatable("argus.info.customsky.snapshot_empty");
+        }
+        return Component.translatable("argus.info.customsky.snapshot_summary", layers.length);
     }
 
     /**

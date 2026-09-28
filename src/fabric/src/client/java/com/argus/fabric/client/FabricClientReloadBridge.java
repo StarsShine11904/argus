@@ -4,6 +4,7 @@ import com.argus.Constants;
 import com.argus.client.reload.ArgusClientReloadListeners;
 import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
@@ -43,8 +44,9 @@ public final class FabricClientReloadBridge {
                     .registerReloadListener(new FabricIdentifiedReloadListener(
                             entry.id(), entry.listener()));
         }
-        LOGGER.info("[{}] registered client resource reload listeners",
-                Constants.MOD_NAME);
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.reload.listeners_registered").getString());
     }
 
     private record FabricIdentifiedReloadListener(

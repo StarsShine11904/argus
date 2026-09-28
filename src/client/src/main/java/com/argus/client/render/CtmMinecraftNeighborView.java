@@ -7,6 +7,7 @@ import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -19,17 +20,6 @@ import java.util.concurrent.ConcurrentMap;
 /**
  * Minecraft-client adapter that fills a {@link NeighborCache} from a render
  * world view.
- *
- * <p>The class intentionally has no Fabric imports. It can be reused by Sodium
- * integrations on any loader that exposes the same Minecraft client rendering
- * types. Loader-specific source sets may decide how to construct and wire it.
- *
- * <h2>Threading</h2>
- *
- * <p>One instance is owned by one renderer/section-build worker context and is
- * recentered for each block. It is not thread-safe.
- *
- * <h2>Performance</h2>
  *
  * <p>Performance: HOT PATH. Allocation policy: no per-neighbour allocation
  * after construction. Neighbour block states are loaded lazily by offset.
@@ -112,7 +102,8 @@ public final class CtmMinecraftNeighborView implements NeighborView {
 
     private void setNeighbourBlock(int dx, int dy, int dz) {
         if (!centered) {
-            throw new IllegalStateException("reset() must be called first");
+            throw new IllegalStateException(
+                    Component.translatable("argus.error.ctm.neighbor_view_uninitialized").getString());
         }
         scratchPos.set(centerX + dx, centerY + dy, centerZ + dz);
         BlockState state = source.getBlockState(scratchPos);
@@ -187,8 +178,7 @@ public final class CtmMinecraftNeighborView implements NeighborView {
         return previous == null ? created : previous;
     }
 
-    private @Nullable NamespaceId fallbackSprite(int dx, int dy, int dz,
-                                                 int face) {
+    private @Nullable NamespaceId fallbackSprite(int dx, int dy, int dz, int face) {
         String blockId = cache.blockId(dx, dy, dz);
         if (blockId == null || blockId.isEmpty()
                 || "minecraft:air".equals(blockId)) {

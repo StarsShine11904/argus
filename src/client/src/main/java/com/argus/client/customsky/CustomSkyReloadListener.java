@@ -4,6 +4,7 @@ import com.argus.Constants;
 import com.argus.customsky.CustomSkyParseResult;
 import com.argus.customsky.CustomSkyProperties;
 import com.argus.customsky.CustomSkyRuleSet;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
@@ -17,7 +18,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.regex.Matcher;
@@ -41,6 +41,19 @@ public final class CustomSkyReloadListener implements PreparableReloadListener {
     public static final Identifier ID =
             Identifier.fromNamespaceAndPath(Constants.MOD_ID,
                     "custom_sky_reload");
+
+    @Override
+    public String getName() {
+        return "Argus Custom Sky Reload Listener";
+    }
+
+    /**
+     * 取得本地化顯示名稱，適合除錯 HUD 或介面顯示。
+     */
+    public Component getDisplayName() {
+        return Component.translatable("argus.reload_listener.custom_sky");
+    }
+
     @Override
     public CompletableFuture<Void> reload(
             SharedState currentReload,
@@ -63,16 +76,23 @@ public final class CustomSkyReloadListener implements PreparableReloadListener {
         CustomSkyParseResult parsed = CustomSkyProperties.parseAll(
                 java.util.List.copyOf(sources.values()));
         for (CustomSkyParseResult.Error error : parsed.errors()) {
-            LOGGER.warn("[{}] skipping malformed Custom Sky layer {}: {}",
-                    Constants.MOD_NAME, error.sourceFile(), error.message());
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.customsky.reload.malformed_file",
+                    Constants.MOD_NAME,
+                    error.sourceFile(),
+                    error.message()
+            ).getString());
         }
         CustomSkyRuleSet ruleSet = CustomSkyRuleSet.of(parsed.layers());
         CustomSkyClientSnapshot snapshot = CustomSkyClientSnapshot.from(
                 ruleSet, manager, LOGGER);
-        LOGGER.info("[{}] Custom Sky reload: {} parsed layers from {} files, "
-                        + "{} runtime layers",
-                Constants.MOD_NAME, ruleSet.all().length, sources.size(),
-                snapshot.size());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.customsky.reload.summary",
+                Constants.MOD_NAME,
+                ruleSet.all().length,
+                sources.size(),
+                snapshot.size()
+        ).getString());
         return snapshot;
     }
 
@@ -112,8 +132,12 @@ public final class CustomSkyReloadListener implements PreparableReloadListener {
                 out.put(key, new CustomSkyProperties.RuleSource(
                         readAll(reader), loc.toString()));
             } catch (Exception e) {
-                LOGGER.warn("[{}] failed to read Custom Sky file {}: {}",
-                        Constants.MOD_NAME, loc, e.getMessage());
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.customsky.reload.read_failed",
+                        Constants.MOD_NAME,
+                        loc,
+                        e.getMessage()
+                ).getString());
             }
         }
     }
@@ -187,8 +211,11 @@ public final class CustomSkyReloadListener implements PreparableReloadListener {
 
     private static void publish(CustomSkyClientSnapshot snapshot) {
         CustomSkyRuntime.replace(snapshot);
-        LOGGER.info("[{}] Custom Sky snapshot installed: active={}",
-                Constants.MOD_NAME, !snapshot.isEmpty());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.customsky.reload.installed",
+                Constants.MOD_NAME,
+                !snapshot.isEmpty()
+        ).getString());
     }
 
     private static String readAll(java.io.Reader reader)

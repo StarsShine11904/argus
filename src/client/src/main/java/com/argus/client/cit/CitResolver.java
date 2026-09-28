@@ -1,6 +1,7 @@
 package com.argus.client.cit;
 
 import com.argus.cit.CitRule;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.LinkedHashMap;
@@ -33,7 +34,8 @@ public final class CitResolver {
             };
 
     public CitResolver(CitClientSnapshot snapshot) {
-        this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
+        this.snapshot = Objects.requireNonNull(snapshot, () ->
+                Component.translatable("argus.error.cit.snapshot_null").getString());
     }
 
     public CitClientSnapshot snapshot() {
@@ -66,5 +68,14 @@ public final class CitResolver {
             cache.put(key, selected);
         }
         return selected;
+    }
+
+    /**
+     * 取得快取狀態的本地化 Component（適合除錯介面或診斷日誌使用）。
+     */
+    public Component cacheStatusComponent() {
+        synchronized (cache) {
+            return Component.translatable("argus.info.cit.cache_status", cache.size(), MAX_CACHE_ENTRIES);
+        }
     }
 }

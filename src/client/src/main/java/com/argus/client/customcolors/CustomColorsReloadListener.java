@@ -13,6 +13,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.color.block.BlockTintSources;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
@@ -61,6 +62,19 @@ public final class CustomColorsReloadListener implements PreparableReloadListene
     public static final Identifier ID =
             Identifier.fromNamespaceAndPath(Constants.MOD_ID,
                     "custom_colors_reload");
+
+    @Override
+    public String getName() {
+        return "Argus Custom Colors Reload Listener";
+    }
+
+    /**
+     * 取得本地化名稱 Component（適合除錯 HUD 或介面顯示）。
+     */
+    public Component getDisplayName() {
+        return Component.translatable("argus.reload_listener.custom_colors");
+    }
+
     @Override
     public CompletableFuture<Void> reload(
             SharedState currentReload,
@@ -116,12 +130,14 @@ public final class CustomColorsReloadListener implements PreparableReloadListene
                 special, environment);
         CustomColorsClientSnapshot snapshot =
                 CustomColorsClientSnapshot.from(ruleSet, imagesBySource);
-        LOGGER.info("[{}] Custom Colors reload: {} hard colors, {} block "
-                        + "rules, {} decoded block colormaps, {} special "
-                        + "colormaps",
-                Constants.MOD_NAME, colorProperties.overrides().size(),
-                blockRules.size(), imagesBySource.size(), special.size()
-                        + environment.size());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.customcolors.reload.summary",
+                Constants.MOD_NAME,
+                colorProperties.overrides().size(),
+                blockRules.size(),
+                imagesBySource.size(),
+                special.size() + environment.size()
+        ).getString());
         return snapshot;
     }
 
@@ -139,15 +155,23 @@ public final class CustomColorsReloadListener implements PreparableReloadListene
                     ColorProperties.parseColorProperties(
                             readAll(reader), COLOR_PROPERTIES.toString());
             for (CustomColorParseResult.Error error : result.errors()) {
-                LOGGER.warn("[{}] malformed Custom Colors key {} in {} "
-                                + "({}): {}",
-                        Constants.MOD_NAME, error.key(), error.sourceFile(),
-                        error.value(), error.message());
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.customcolors.reload.malformed_key",
+                        Constants.MOD_NAME,
+                        error.key(),
+                        error.sourceFile(),
+                        error.value(),
+                        error.message()
+                ).getString());
             }
             return result;
         } catch (Exception e) {
-            LOGGER.warn("[{}] failed to read {}: {}",
-                    Constants.MOD_NAME, COLOR_PROPERTIES, e.getMessage());
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.customcolors.reload.read_failed",
+                    Constants.MOD_NAME,
+                    COLOR_PROPERTIES,
+                    e.getMessage()
+            ).getString());
             return new CustomColorParseResult(ColorOverrideTable.empty(),
                     java.util.List.of(), java.util.List.of());
         }
@@ -174,8 +198,12 @@ public final class CustomColorsReloadListener implements PreparableReloadListene
                     out.add(rule);
                 }
             } catch (Exception e) {
-                LOGGER.warn("[{}] skipping malformed colormap file {}: {}",
-                        Constants.MOD_NAME, loc, e.getMessage());
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.customcolors.reload.malformed_colormap_file",
+                        Constants.MOD_NAME,
+                        loc,
+                        e.getMessage()
+                ).getString());
             }
         }
         for (String folder : BLOCK_COLORMAP_FOLDERS) {
@@ -193,9 +221,12 @@ public final class CustomColorsReloadListener implements PreparableReloadListene
                     out.add(ColorProperties.parseImplicitColormap(
                             loc.toString()));
                 } catch (RuntimeException e) {
-                    LOGGER.warn("[{}] skipping malformed implicit colormap "
-                                    + "{}: {}",
-                            Constants.MOD_NAME, loc, e.getMessage());
+                    LOGGER.warn("{}", Component.translatable(
+                            "argus.warn.customcolors.reload.malformed_implicit_colormap",
+                            Constants.MOD_NAME,
+                            loc,
+                            e.getMessage()
+                    ).getString());
                 }
             }
         }
@@ -220,8 +251,12 @@ public final class CustomColorsReloadListener implements PreparableReloadListene
             return Optional.of(new ColormapImage(image.getWidth(),
                     image.getHeight(), image.getPixels()));
         } catch (Exception e) {
-            LOGGER.warn("[{}] failed to decode colormap {}: {}",
-                    Constants.MOD_NAME, id, e.getMessage());
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.customcolors.reload.decode_failed",
+                    Constants.MOD_NAME,
+                    id,
+                    e.getMessage()
+            ).getString());
             return Optional.empty();
         }
     }
@@ -234,8 +269,11 @@ public final class CustomColorsReloadListener implements PreparableReloadListene
         CustomColorsRuntime.replace(snapshot);
         registerTintSources(snapshot);
         requestTerrainRebuild();
-        LOGGER.info("[{}] Custom Colors snapshot installed: active={}",
-                Constants.MOD_NAME, !snapshot.isEmpty());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.customcolors.reload.installed",
+                Constants.MOD_NAME,
+                !snapshot.isEmpty()
+        ).getString());
     }
 
     private static void registerTintSources(CustomColorsClientSnapshot snapshot) {

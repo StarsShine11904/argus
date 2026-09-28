@@ -4,6 +4,7 @@ import com.argus.Constants;
 import com.argus.natural.NaturalTextureParseResult;
 import com.argus.natural.NaturalTextureProperties;
 import com.argus.natural.NaturalTextureRuleSet;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
@@ -28,12 +29,11 @@ public final class NaturalTexturesReloadListener implements PreparableReloadList
     private static final Logger LOGGER =
             LoggerFactory.getLogger(Constants.MOD_ID + "/natural-reload");
     private static final Identifier NATURAL_PROPERTIES =
-            Identifier.fromNamespaceAndPath("minecraft",
-                    "optifine/natural.properties");
+            Identifier.fromNamespaceAndPath("minecraft", "optifine/natural.properties");
 
     public static final Identifier ID =
-            Identifier.fromNamespaceAndPath(Constants.MOD_ID,
-                    "natural_textures_reload");
+            Identifier.fromNamespaceAndPath(Constants.MOD_ID, "natural_textures_reload");
+
     @Override
     public CompletableFuture<Void> reload(
             SharedState currentReload,
@@ -43,43 +43,45 @@ public final class NaturalTexturesReloadListener implements PreparableReloadList
         ResourceManager manager = currentReload.resourceManager();
         return CompletableFuture.supplyAsync(() -> load(manager), taskExecutor)
                 .thenCompose(preparationBarrier::wait)
-                .thenAcceptAsync(NaturalTexturesRuntime::replace,
-                        reloadExecutor);
+                .thenAcceptAsync(NaturalTexturesRuntime::replace, reloadExecutor);
     }
 
     private static NaturalTextureRuleSet load(ResourceManager manager) {
         Optional<Resource> resource = manager.getResource(NATURAL_PROPERTIES);
         if (resource.isEmpty()) {
-            LOGGER.info("[{}] Natural Textures reload: no {} found; "
-                            + "feature remains idle",
-                    Constants.MOD_NAME, NATURAL_PROPERTIES);
+            LOGGER.info("[{}] {}",
+                    Constants.MOD_NAME,
+                    Component.translatable("argus.log.natural_textures.not_found",
+                            NATURAL_PROPERTIES).getString());
             return NaturalTextureRuleSet.empty();
         }
         try (var in = resource.get().open();
-             var reader = new InputStreamReader(in,
-                     StandardCharsets.UTF_8)) {
+             var reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
             NaturalTextureParseResult result = NaturalTextureProperties.parse(
                     readAll(reader), NATURAL_PROPERTIES.toString());
             for (NaturalTextureParseResult.Error error : result.errors()) {
-                LOGGER.warn("[{}] malformed Natural Textures key {} in {} "
-                                + "({}): {}",
-                        Constants.MOD_NAME, error.key(), error.sourceFile(),
-                        error.value(), error.message());
+                LOGGER.warn("[{}] {}",
+                        Constants.MOD_NAME,
+                        Component.translatable("argus.log.natural_textures.malformed_key",
+                                error.key(), error.sourceFile(), error.value(),
+                                error.message()).getString());
             }
-            NaturalTextureRuleSet ruleSet =
-                    NaturalTextureRuleSet.of(result.rules());
-            LOGGER.info("[{}] Natural Textures reload: {} rules",
-                    Constants.MOD_NAME, ruleSet.size());
+            NaturalTextureRuleSet ruleSet = NaturalTextureRuleSet.of(result.rules());
+            LOGGER.info("[{}] {}",
+                    Constants.MOD_NAME,
+                    Component.translatable("argus.log.natural_textures.loaded",
+                            ruleSet.size()).getString());
             return ruleSet;
         } catch (Exception e) {
-            LOGGER.warn("[{}] failed to read {}: {}",
-                    Constants.MOD_NAME, NATURAL_PROPERTIES, e.getMessage());
+            LOGGER.warn("[{}] {}",
+                    Constants.MOD_NAME,
+                    Component.translatable("argus.log.natural_textures.read_failed",
+                            NATURAL_PROPERTIES, e.getMessage()).getString());
             return NaturalTextureRuleSet.empty();
         }
     }
 
-    private static String readAll(java.io.Reader reader)
-            throws java.io.IOException {
+    private static String readAll(java.io.Reader reader) throws java.io.IOException {
         StringBuilder out = new StringBuilder();
         char[] buf = new char[1024];
         int n;

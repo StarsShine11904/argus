@@ -1,35 +1,39 @@
 package com.argus.client.customcolors;
 
+import com.argus.Constants;
 import com.argus.config.ArgusConfigHolder;
 import com.argus.customcolors.ColormapImage;
-import com.argus.resource.NamespaceId;
-import net.minecraft.client.multiplayer.ClientLevel;
 import com.argus.client.platform.ClientEnvironment;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.BiomeColors;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Cursor3D;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.util.Mth;
 import net.minecraft.util.ARGB;
-import net.minecraft.world.level.ColorResolver;
+import net.minecraft.util.Mth;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.alchemy.PotionContents;
+import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RedStoneWireBlock;
 import net.minecraft.world.level.block.StemBlock;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.material.FogType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -39,6 +43,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * mutates global color state or allocates in the common fallback path.
  */
 public final class CustomColorsRuntime {
+
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(Constants.MOD_ID + "/custom-colors");
 
     private static final String[] MAP_COLOR_KEYS = {
             "map.air", "map.grass", "map.sand", "map.cloth",
@@ -92,13 +99,27 @@ public final class CustomColorsRuntime {
         if (ClientEnvironment.isModLoaded("colormatic")) {
             if (!warnedColormatic) {
                 warnedColormatic = true;
-                org.slf4j.LoggerFactory.getLogger("argus/custom-colors")
-                        .warn("[Argus] Colormatic detected; Argus Custom "
-                                + "Colors runtime is disabled");
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.customcolors.runtime.colormatic_conflict",
+                        Constants.MOD_NAME
+                ).getString());
             }
             return false;
         }
         return true;
+    }
+
+    /**
+     * 取得目前自訂顏色執行階段狀態的可翻譯描述（適合除錯介面或診斷日誌使用）。
+     */
+    public static Component statusComponent() {
+        if (!ArgusConfigHolder.get().customColorsActive()) {
+            return Component.translatable("argus.status.customcolors.disabled_config");
+        }
+        if (ClientEnvironment.isModLoaded("colormatic")) {
+            return Component.translatable("argus.status.customcolors.disabled_conflict");
+        }
+        return Component.translatable("argus.status.customcolors.active");
     }
 
     private static boolean biomeActive() {
@@ -498,29 +519,33 @@ public final class CustomColorsRuntime {
             return (Biome.ClimateSettings) BIOME_CLIMATE_SETTINGS.invoke(biome);
         } catch (Throwable throwable) {
             throw new IllegalStateException(
-                    "Cannot read biome climate settings", throwable);
-        }
-    }
-
-    private static MethodHandle biomeClimateSettingsAccessor() {
-        MethodHandles.Lookup lookup = MethodHandles.publicLookup();
-        try {
-            return lookup.findVirtual(Biome.class,
-                    "getModifiedClimateSettings",
-                    MethodType.methodType(Biome.ClimateSettings.class));
-        } catch (NoSuchMethodException | IllegalAccessException ignored) {
-            try {
-                return lookup.findGetter(Biome.class, "climateSettings",
-                        Biome.ClimateSettings.class);
-            } catch (NoSuchFieldException | IllegalAccessException e) {
-                throw new IllegalStateException(
-                        "No public biome climate accessor is available", e);
-            }
+                    Component.translatable("argus.error.customcolors.read_climate_failed").getString(),
+                    throwable
+            );
         }
     }
 
     private static String blockPath(Block block) {
         Identifier id = BuiltInRegistries.BLOCK.getKey(block);
         return id == null ? "" : id.getPath();
+    }
+
+    private static MethodHandle biomeClimateSettingsAccessor() {
+        try {
+            MethodHandles.Lookup lookup = MethodHandles.lookup();
+            for (Field field : Biome.class.getDeclaredFields()) {
+                if (field.getType() == Biome.ClimateSettings.class) {
+                    field.setAccessible(true);
+                    return lookup.unreflectGetter(field);
+                }
+            }
+            throw new NoSuchFieldException("Biome.ClimateSettings field not found in Biome");
+        } catch (Throwable t) {
+            LOGGER.error("{}", Component.translatable(
+                    "argus.error.customcolors.climate_accessor_init_failed",
+                    t.getMessage()
+            ).getString());
+            return MethodHandles.empty(MethodType.methodType(Biome.ClimateSettings.class, Biome.class));
+        }
     }
 }

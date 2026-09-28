@@ -3,6 +3,7 @@ package com.argus.client.customgui;
 import com.argus.condition.ConditionContext;
 import com.argus.condition.ConditionKey;
 import com.argus.resource.NamespaceId;
+import net.minecraft.network.chat.Component;
 
 import java.util.Map;
 import java.util.Objects;
@@ -34,7 +35,8 @@ final class CustomGuiScreenContext implements ConditionContext {
                            Map<String, Boolean> booleanFlags,
                            Map<String, String> stringFlags,
                            Map<String, Integer> intFlags) {
-        this.container = Objects.requireNonNull(container, "container");
+        this.container = Objects.requireNonNull(container, () ->
+                Component.translatable("argus.error.customgui.container_null").getString());
         this.name = name;
         this.height = height;
         this.booleanFlags = Map.copyOf(booleanFlags);
@@ -44,6 +46,16 @@ final class CustomGuiScreenContext implements ConditionContext {
 
     String container() {
         return container;
+    }
+
+    /**
+     * 取得當前畫面上下文的本地化摘要 Component（適合除錯 HUD 或診斷日誌使用）。
+     */
+    Component toComponent() {
+        Component containerName = CustomGuiClientSnapshot.containerDisplayName(container);
+        String displayName = name != null ? name : Component.translatable("argus.label.none").getString();
+        int totalFlags = booleanFlags.size() + stringFlags.size() + intFlags.size();
+        return Component.translatable("argus.info.customgui.context_summary", containerName, displayName, totalFlags);
     }
 
     @Override

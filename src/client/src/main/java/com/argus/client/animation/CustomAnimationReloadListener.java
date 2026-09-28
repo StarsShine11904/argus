@@ -5,6 +5,7 @@ import com.argus.animation.CustomAnimationParseResult;
 import com.argus.animation.CustomAnimationProperties;
 import com.argus.animation.CustomAnimationRuleSet;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
@@ -35,6 +36,7 @@ public final class CustomAnimationReloadListener implements PreparableReloadList
     public static final Identifier ID =
             Identifier.fromNamespaceAndPath(Constants.MOD_ID,
                     "custom_animations_reload");
+
     @Override
     public CompletableFuture<Void> reload(
             SharedState currentReload,
@@ -67,34 +69,47 @@ public final class CustomAnimationReloadListener implements PreparableReloadList
                 sources.add(new CustomAnimationProperties.RuleSource(
                         readAll(reader), loc.toString()));
             } catch (Exception e) {
-                LOGGER.warn("[{}] failed to read Custom Animation file {}: {}",
-                        Constants.MOD_NAME, loc, e.getMessage());
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.animation.reload.read_failed",
+                        Constants.MOD_NAME,
+                        loc,
+                        e.getMessage()
+                ).getString());
             }
         }
         CustomAnimationParseResult parsed =
                 CustomAnimationProperties.parseAll(sources);
         for (CustomAnimationParseResult.Error error : parsed.errors()) {
-            LOGGER.warn("[{}] skipping malformed Custom Animation file {}: {}",
-                    Constants.MOD_NAME, error.sourceFile(),
-                    error.message());
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.animation.reload.malformed_file",
+                    Constants.MOD_NAME,
+                    error.sourceFile(),
+                    error.message()
+            ).getString());
         }
         CustomAnimationRuleSet ruleSet =
                 CustomAnimationRuleSet.of(parsed.rules());
         CustomAnimationClientSnapshot snapshot =
                 CustomAnimationClientSnapshot.from(
                         ruleSet, resourceManager, LOGGER);
-        LOGGER.info("[{}] Custom Animations reload: {} parsed rules from {} "
-                        + "files, {} runtime rules",
-                Constants.MOD_NAME, ruleSet.all().size(), sources.size(),
-                snapshot.size());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.animation.reload.summary",
+                Constants.MOD_NAME,
+                ruleSet.all().size(),
+                sources.size(),
+                snapshot.size()
+        ).getString());
         return snapshot;
     }
 
     private static void publish(CustomAnimationClientSnapshot snapshot) {
         CustomAnimationRuntime.replace(snapshot);
         requestTerrainRebuild();
-        LOGGER.info("[{}] Custom Animations snapshot installed: active={}",
-                Constants.MOD_NAME, !snapshot.isEmpty());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.animation.reload.installed",
+                Constants.MOD_NAME,
+                !snapshot.isEmpty()
+        ).getString());
     }
 
     private static void requestTerrainRebuild() {

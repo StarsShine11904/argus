@@ -1,6 +1,7 @@
 package com.argus.client.mixin;
 
 import com.argus.Constants;
+import net.minecraft.network.chat.Component;
 import org.objectweb.asm.tree.ClassNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,18 +41,35 @@ public final class ArgusClientMixinPlugin implements IMixinConfigPlugin {
             "com.argus.client.mixin.SodiumBlockRendererCtmMixin",
             "com.argus.client.mixin.SodiumLevelColorCacheCustomColorsMixin");
 
-    private boolean sodiumLoaded;
+    private static boolean sodiumLoaded;
 
     @Override
     public void onLoad(String mixinPackage) {
         sodiumLoaded = isClassPresent(SODIUM_BLOCK_RENDERER);
         if (sodiumLoaded) {
-            LOGGER.info("[Argus] Sodium classes visible during mixin plugin load");
+            logSafe("argus.info.mixin.sodium_present",
+                    "[%s] Sodium classes visible during mixin plugin load",
+                    Constants.MOD_NAME);
         } else {
-            LOGGER.info("[Argus] Sodium classes are not visible during mixin "
-                    + "plugin load; Sodium mixins remain enabled because "
-                    + "Sodium is a required dependency");
+            logSafe("argus.info.mixin.sodium_missing_early",
+                    "[%s] Sodium classes are not visible during mixin plugin load; "
+                            + "Sodium mixins remain enabled because Sodium is a required dependency",
+                    Constants.MOD_NAME);
         }
+    }
+
+    /**
+     * 供遊戲啟動完成後（除錯 HUD、F3、錯誤診斷畫面）取得本地化狀態。
+     */
+    public static Component statusComponent() {
+        if (sodiumLoaded) {
+            return Component.translatable("argus.status.mixin.sodium_present");
+        }
+        return Component.translatable("argus.status.mixin.sodium_deferred");
+    }
+
+    public static boolean isSodiumLoaded() {
+        return sodiumLoaded;
     }
 
     @Override
@@ -96,5 +114,16 @@ public final class ArgusClientMixinPlugin implements IMixinConfigPlugin {
         String resourceName = className.replace('.', '/') + ".class";
         return ArgusClientMixinPlugin.class.getClassLoader()
                 .getResource(resourceName) != null;
+    }
+
+    /**
+     * 安全日誌防護：若 Minecraft 早期啟動階段未載入 Component/語系，退回字串格式化輸出。
+     */
+    private static void logSafe(String key, String fallbackFormat, Object... args) {
+        try {
+            LOGGER.info("{}", Component.translatable(key, args).getString());
+        } catch (Throwable ignored) {
+            LOGGER.info(String.format(fallbackFormat, args));
+        }
     }
 }

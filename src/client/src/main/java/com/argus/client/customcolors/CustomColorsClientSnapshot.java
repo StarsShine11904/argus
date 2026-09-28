@@ -7,6 +7,7 @@ import com.argus.customcolors.ColorOverrideTable;
 import com.argus.customcolors.CustomColorRuleSet;
 import com.argus.resource.NamespaceId;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -102,6 +103,31 @@ public final class CustomColorsClientSnapshot {
 
     public Iterable<Block> paletteBlocks() {
         return blockRules.keySet();
+    }
+
+    /**
+     * 取得特定方塊匹配自訂顏色規則數量的本地化描述。
+     */
+    public Component rulesDescription(Block block) {
+        RuntimeRule[] rules = rulesFor(block);
+        if (rules.length == 0) {
+            return Component.translatable("argus.info.customcolors.block_rules_none", block.getName());
+        }
+        return Component.translatable("argus.info.customcolors.block_rules_count", block.getName(), rules.length);
+    }
+
+    /**
+     * 取得快照狀態摘要 Component（適合 Log、F3 或除錯介面）。
+     */
+    public Component toComponent() {
+        if (isEmpty()) {
+            return Component.translatable("argus.info.customcolors.snapshot_empty");
+        }
+        return Component.translatable(
+                "argus.info.customcolors.snapshot_summary",
+                blockRules.size(),
+                imagesBySource.size()
+        );
     }
 
     private static Block resolveBlock(BlockSpec spec) {

@@ -4,6 +4,7 @@ import com.argus.Constants;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,9 +48,9 @@ public final class ArgusBuiltinResourcePacks {
                 .getModContainer(Constants.MOD_ID)
                 .orElse(null);
         if (container == null) {
-            LOGGER.warn("[{}] cannot register built-in packs: "
-                            + "mod container not found",
-                    Constants.MOD_NAME);
+            LOGGER.warn("[{}] {}",
+                    Constants.MOD_NAME,
+                    Component.translatable("argus.log.builtin_pack.container_missing").getString());
             return;
         }
 
@@ -59,11 +60,13 @@ public final class ArgusBuiltinResourcePacks {
                 container,
                 false);
         if (registered) {
-            LOGGER.info("[{}] registered built-in resource pack {}",
-                    Constants.MOD_NAME, DEFAULT);
+            LOGGER.info("[{}] {}",
+                    Constants.MOD_NAME,
+                    Component.translatable("argus.log.builtin_pack.registered", DEFAULT).getString());
         } else {
-            LOGGER.warn("[{}] built-in resource pack {} was not registered",
-                    Constants.MOD_NAME, DEFAULT);
+            LOGGER.warn("[{}] {}",
+                    Constants.MOD_NAME,
+                    Component.translatable("argus.log.builtin_pack.failed", DEFAULT).getString());
         }
     }
 }

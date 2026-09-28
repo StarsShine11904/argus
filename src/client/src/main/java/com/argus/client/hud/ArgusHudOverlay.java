@@ -1,101 +1,241 @@
-package com.argus.client.hud;
+package com.argus.client.emissive;
 
-import com.argus.config.ArgusConfig;
-import com.argus.config.OverlayCorner;
-import com.argus.config.TextContrast;
+import com.argus.Constants;
+import com.argus.emissive.EmissiveProperties;
+import com.argus.emissive.EmissiveSettings;
+import com.argus.emissive.EmissiveSpriteTable;
+import com.argus.resource.NamespaceId;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 /**
- * Emits Argus-owned HUD text into Mojang's 26.2 GUI extraction path.
+ * Client resource reload bridge for OptiFine emissive textures.
  *
- * <p>Threading: called on the client render thread. All config reads come from
- * immutable snapshots.
- *
- * <p>Performance: small, bounded allocation per HUD frame only when the overlay
- * is enabled. It is not part of terrain or item hot paths.
+ * <p>Threading: file discovery and parsing happen on the prepare executor;
+ * publication is one atomic table swap after the reload barrier.
  */
-public final class ArgusHudOverlay {
+public final class EmissiveReloadListener implements PreparableReloadListener {
 
-    private ArgusHudOverlay() {
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(Constants.MOD_ID + "/emissive-reload");
+    private static final Identifier EMISSIVE_PROPERTIES =
+            Identifier.fromNamespaceAndPath(
+                    "minecraft", "optifine/emissive.properties");
+    private static final String OPTIFINE_CTM = "optifine/ctm";
+    private static final String CONTINUITY_CTM = "continuity/ctm";
+    public static final Identifier ID =
+            Identifier.fromNamespaceAndPath(
+                    Constants.MOD_ID, "emissive_reload");
+
+    @Override
+    public String getName() {
+        return "Argus Emissive Reload Listener";
     }
 
     /**
-     * Adds FPS and coordinate lines when enabled.
+     * 取得本地化顯示名稱，適合除錯 HUD 或介面顯示。
      */
-    public static void extract(GuiGraphicsExtractor graphics,
-                               Minecraft minecraft,
-                               ArgusConfig cfg) {
-        if (!cfg.showFps() && !cfg.showCoords()) {
+    public Component getDisplayName() {
+        return Component.translatable("argus.reload_listener.emissive");
+    }
+
+    @Override
+    public CompletableFuture<Void> reload(
+            SharedState currentReload,
+            Executor taskExecutor,
+            PreparationBarrier preparationBarrier,
+            Executor reloadExecutor) {
+        ResourceManager resourceManager = currentReload.resourceManager();
+        return CompletableFuture
+                .supplyAsync(() -> load(resourceManager), taskExecutor)
+                .thenCompose(preparationBarrier::wait)
+                .thenAcceptAsync(EmissiveReloadListener::publish,
+                        reloadExecutor);
+    }
+
+    private static EmissiveSpriteTable load(ResourceManager resourceManager) {
+        Optional<Resource> resource =
+                resourceManager.getResource(EMISSIVE_PROPERTIES);
+        if (resource.isEmpty()) {
+            return EmissiveSpriteTable.empty();
+        }
+        EmissiveSettings settings;
+        try (var in = resource.get().open();
+             var reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+            settings = EmissiveProperties.parse(reader);
+        } catch (Exception e) {
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.emissive.reload.read_failed",
+                    Constants.MOD_NAME,
+                    EMISSIVE_PROPERTIES,
+                    e.getMessage()
+            ).getString());
+            return EmissiveSpriteTable.empty();
+        }
+        Map<NamespaceId, NamespaceId> mappings = collectMappings(
+                resourceManager, settings.suffix());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.emissive.reload.summary",
+                Constants.MOD_NAME,
+                settings.suffix(),
+                mappings.size()
+        ).getString());
+        return EmissiveSpriteTable.of(mappings);
+    }
+
+    private static Map<NamespaceId, NamespaceId> collectMappings(
+            ResourceManager resourceManager,
+            String suffix) {
+        Map<NamespaceId, NamespaceId> mappings = new LinkedHashMap<>();
+        Map<Identifier, Resource> textures;
+        try {
+            textures = resourceManager.listResources("textures",
+                    id -> id.getPath().endsWith(suffix + ".png"));
+        } catch (RuntimeException e) {
+            return mappings;
+        }
+        for (Identifier textureResource : textures.keySet()) {
+            String path = textureResource.getPath();
+            String noPrefix = stripTexturePrefix(path);
+            String noPng = stripPng(noPrefix);
+            if (!noPng.endsWith(suffix)) {
+                continue;
+            }
+            String basePath = noPng.substring(0,
+                    noPng.length() - suffix.length());
+            if (basePath.isEmpty()) {
+                continue;
+            }
+            Identifier baseTexture = Identifier.fromNamespaceAndPath(
+                    textureResource.getNamespace(),
+                    "textures/" + basePath + ".png");
+            if (resourceManager.getResource(baseTexture).isEmpty()) {
+                continue;
+            }
+            mappings.put(
+                    new NamespaceId(textureResource.getNamespace(), basePath),
+                    new NamespaceId(textureResource.getNamespace(), noPng));
+        }
+        collectCtmMappings(resourceManager, suffix, OPTIFINE_CTM, mappings);
+        collectCtmMappings(resourceManager, suffix, CONTINUITY_CTM, mappings);
+        return mappings;
+    }
+
+    private static void collectCtmMappings(
+            ResourceManager resourceManager,
+            String suffix,
+            String tree,
+            Map<NamespaceId, NamespaceId> mappings) {
+        Map<Identifier, Resource> resources;
+        try {
+            resources = resourceManager.listResources(tree,
+                    id -> id.getPath().endsWith(suffix + ".png"));
+        } catch (RuntimeException e) {
             return;
         }
-        List<String> lines = new ArrayList<>(3);
-        if (cfg.showFps()) {
-            String fps = minecraft.getFps() + " FPS";
-            if (cfg.showFpsExtended() && minecraft.getFps() > 0) {
-                fps += " / " + Math.round(1000.0F / minecraft.getFps())
-                        + " ms";
+        for (Identifier resource : resources.keySet()) {
+            String noPng = stripPng(resource.getPath());
+            if (!noPng.endsWith(suffix)) {
+                continue;
             }
-            lines.add(fps);
-        }
-        if (cfg.showCoords()) {
-            Player player = minecraft.player;
-            if (player != null) {
-                lines.add("XYZ " + format(player.getX()) + " "
-                        + format(player.getY()) + " " + format(player.getZ()));
+            String basePath = noPng.substring(0,
+                    noPng.length() - suffix.length());
+            if (basePath.isEmpty()) {
+                continue;
+            }
+            Identifier baseResource = Identifier.fromNamespaceAndPath(
+                    resource.getNamespace(), basePath + ".png");
+            if (resourceManager.getResource(baseResource).isEmpty()) {
+                continue;
+            }
+            mappings.put(
+                    new NamespaceId("argus", basePath),
+                    new NamespaceId("argus", noPng));
+            if (isCompactSourceTile(basePath)) {
+                addGeneratedCompactMappings(basePath, suffix, mappings);
             }
         }
-        if (lines.isEmpty()) {
+    }
+
+    private static boolean isCompactSourceTile(String basePath) {
+        int slash = basePath.lastIndexOf('/');
+        if (slash < 0 || slash == basePath.length() - 1) {
+            return false;
+        }
+        String name = basePath.substring(slash + 1);
+        return name.length() == 1 && name.charAt(0) >= '0'
+                && name.charAt(0) <= '4';
+    }
+
+    private static void addGeneratedCompactMappings(
+            String compactSourcePath,
+            String suffix,
+            Map<NamespaceId, NamespaceId> mappings) {
+        int slash = compactSourcePath.lastIndexOf('/');
+        String dir = compactSourcePath.substring(0, slash);
+        for (int face = 0; face < 6; face++) {
+            for (int tile = 1; tile < 47; tile++) {
+                String generated = dir + "/generated_face_" + face
+                        + "/" + tile;
+                mappings.put(
+                        new NamespaceId("argus", generated),
+                        new NamespaceId("argus", generated + suffix));
+            }
+        }
+    }
+
+    private static void publish(EmissiveSpriteTable table) {
+        EmissiveSpriteTable.replace(table);
+        if (table == null || table.isEmpty()) {
+            LOGGER.info("{}", Component.translatable(
+                    "argus.info.emissive.reload.no_mappings",
+                    Constants.MOD_NAME
+            ).getString());
+        } else {
+            LOGGER.info("{}", Component.translatable(
+                    "argus.info.emissive.reload.installed",
+                    Constants.MOD_NAME,
+                    table.size()
+            ).getString());
+        }
+        requestTerrainRebuild();
+    }
+
+    private static void requestTerrainRebuild() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) {
             return;
         }
-        int maxWidth = 0;
-        for (String line : lines) {
-            maxWidth = Math.max(maxWidth, minecraft.font.width(line));
-        }
-        int totalHeight = lines.size() * 10;
-        int x = x(graphics, cfg.overlayCorner(), maxWidth);
-        int y = y(graphics, cfg.overlayCorner(), totalHeight);
-        for (int i = 0; i < lines.size(); i++) {
-            String line = lines.get(i);
-            int lineX = cfg.overlayCorner() == OverlayCorner.TOP_RIGHT
-                    || cfg.overlayCorner() == OverlayCorner.BOTTOM_RIGHT
-                    ? x + maxWidth - minecraft.font.width(line)
-                    : x;
-            if (cfg.textContrast() == TextContrast.BACKDROP) {
-                graphics.textWithBackdrop(minecraft.font,
-                        Component.literal(line), lineX, y + i * 10,
-                        minecraft.font.width(line), 0xFFFFFFFF);
-            } else {
-                graphics.text(minecraft.font, line, lineX, y + i * 10,
-                        0xFFFFFFFF, true);
-            }
-        }
+        minecraft.levelRenderer.invalidateCompiledGeometry(
+                minecraft.level,
+                minecraft.options,
+                minecraft.gameRenderer.mainCamera(),
+                minecraft.getBlockColors());
     }
 
-    private static String format(double value) {
-        return String.format(java.util.Locale.ROOT, "%.1f", value);
+    private static String stripTexturePrefix(String path) {
+        return path.startsWith("textures/")
+                ? path.substring("textures/".length())
+                : path;
     }
 
-    private static int x(GuiGraphicsExtractor graphics,
-                         OverlayCorner corner,
-                         int width) {
-        return corner == OverlayCorner.TOP_RIGHT
-                || corner == OverlayCorner.BOTTOM_RIGHT
-                ? graphics.guiWidth() - width - 4
-                : 4;
-    }
-
-    private static int y(GuiGraphicsExtractor graphics,
-                         OverlayCorner corner,
-                         int height) {
-        return corner == OverlayCorner.BOTTOM_LEFT
-                || corner == OverlayCorner.BOTTOM_RIGHT
-                ? graphics.guiHeight() - height - 4
-                : 4;
+    private static String stripPng(String path) {
+        return path.endsWith(".png")
+                ? path.substring(0, path.length() - 4)
+                : path;
     }
 }

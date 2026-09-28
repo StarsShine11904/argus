@@ -1,171 +1,419 @@
-package com.argus.client.bettergrass;
+package com.argus.client.benchmark;
 
-import com.argus.Constants;
-import com.argus.bettergrass.BetterGrassFamily;
-import com.argus.bettergrass.BetterGrassProperties;
-import com.argus.bettergrass.BetterGrassRules;
+import com.argus.ctm.ConnectMode;
+import com.argus.ctm.CtmCandidateScratch;
+import com.argus.ctm.CtmConnectivityProfile;
+import com.argus.ctm.CtmMethod;
+import com.argus.ctm.CtmRule;
+import com.argus.ctm.Faces;
 import com.argus.resource.NamespaceId;
-import net.minecraft.client.Minecraft;
-import net.minecraft.resources.Identifier;
-import net.minecraft.server.packs.resources.PreparableReloadListener;
-import net.minecraft.server.packs.resources.Resource;
-import net.minecraft.server.packs.resources.ResourceManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.argus.resource.RangeListInt;
+import net.minecraft.network.chat.Component;
 
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
- * Client resource reload bridge for OptiFine {@code bettergrass.properties}.
+ * Benchmark-only CTM candidate-set analyzer.
  *
- * <p>Threading: parsing runs on the reload prepare executor; publication runs
- * after the preparation barrier through atomic shared state replacement.
+ * <p>Purpose: records which face-filtered candidate arrays are actually used
+ * during autopilot runs. CTM-v3 optimization work needs these facts before
+ * introducing more selector fastpaths, because previous blind micro-optimizing
+ * attempts were slower in real packs.
+ *
+ * <p>Threading: Sodium section-build workers may record concurrently. Entries
+ * are immutable except for call counters.
+ *
+ * <p>Performance: gated by {@code argus.benchmark.ctmCandidateAnalysis}.
+ * Allocation is accepted only for explicit CTM analysis runs. Normal
+ * performance benchmarks keep this disabled so the report measures the
+ * production CTM hot path instead of the analysis machinery.
  */
-public final class BetterGrassReloadListener implements PreparableReloadListener {
+public final class CtmCandidateAnalysis {
 
-    private static final Logger LOGGER =
-            LoggerFactory.getLogger(Constants.MOD_ID + "/better-grass-reload");
-    private static final Identifier BETTER_GRASS_PROPERTIES =
-            Identifier.fromNamespaceAndPath(
-                    "minecraft", "optifine/bettergrass.properties");
-    public static final Identifier ID =
-            Identifier.fromNamespaceAndPath(
-                    Constants.MOD_ID, "better_grass_reload");
-    @Override
-    public CompletableFuture<Void> reload(
-            SharedState currentReload,
-            Executor taskExecutor,
-            PreparationBarrier preparationBarrier,
-            Executor reloadExecutor) {
-        ResourceManager resourceManager = currentReload.resourceManager();
-        return CompletableFuture
-                .supplyAsync(() -> load(resourceManager), taskExecutor)
-                .thenCompose(preparationBarrier::wait)
-                .thenAcceptAsync(BetterGrassReloadListener::publish,
-                        reloadExecutor);
+    private static final int DEFAULT_LIMIT = 24;
+    private static final boolean ENABLED =
+            Boolean.getBoolean("argus.benchmark.ctmCandidateAnalysis");
+    private static final ConcurrentMap<String, Entry> ENTRIES =
+            new ConcurrentHashMap<>();
+
+    private CtmCandidateAnalysis() {
     }
 
-    private static BetterGrassRules load(ResourceManager resourceManager) {
-        Optional<Resource> resource =
-                resourceManager.getResource(BETTER_GRASS_PROPERTIES);
-        if (resource.isEmpty()) {
-            return null;
-        }
-        try (var in = resource.get().open();
-             var reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
-            BetterGrassRules rules = validateTextures(
-                    BetterGrassProperties.parse(reader), resourceManager);
-            LOGGER.info("[{}] loaded {}", Constants.MOD_NAME,
-                    BETTER_GRASS_PROPERTIES);
-            return rules;
-        } catch (Exception e) {
-            LOGGER.warn("[{}] failed to read {}; using Argus defaults: {}",
-                    Constants.MOD_NAME, BETTER_GRASS_PROPERTIES,
-                    e.getMessage());
-            return null;
-        }
-    }
-
-    private static void publish(BetterGrassRules rules) {
-        BetterGrassRules.replaceResourcePackRules(rules);
-        if (rules == null) {
-            LOGGER.info("[{}] no bettergrass.properties active; using Argus "
-                    + "Better Grass config", Constants.MOD_NAME);
-        } else {
-            LOGGER.info("[{}] Better Grass resource-pack rules installed",
-                    Constants.MOD_NAME);
-        }
-        requestTerrainRebuild();
-    }
-
-    private static BetterGrassRules validateTextures(
-            BetterGrassRules rules,
-            ResourceManager resourceManager) {
-        return new BetterGrassRules(
-                rules.enabled(BetterGrassFamily.GRASS),
-                rules.enabled(BetterGrassFamily.GRASS_SNOW),
-                rules.enabled(BetterGrassFamily.DIRT_PATH),
-                rules.enabled(BetterGrassFamily.FARMLAND),
-                rules.enabled(BetterGrassFamily.MYCELIUM),
-                rules.enabled(BetterGrassFamily.MYCELIUM_SNOW),
-                rules.enabled(BetterGrassFamily.PODZOL),
-                rules.enabled(BetterGrassFamily.PODZOL_SNOW),
-                rules.enabled(BetterGrassFamily.CRIMSON_NYLIUM),
-                rules.enabled(BetterGrassFamily.WARPED_NYLIUM),
-                rules.grassMultilayer(),
-                validateTexture(resourceManager, rules.textureGrass(),
-                        BetterGrassRules.GRASS_TEXTURE, "texture.grass"),
-                validateTexture(resourceManager, rules.textureGrassSide(),
-                        BetterGrassRules.GRASS_SIDE_TEXTURE,
-                        "texture.grass_side"),
-                validateTexture(resourceManager,
-                        rules.texture(BetterGrassFamily.DIRT_PATH),
-                        BetterGrassRules.DIRT_PATH_TEXTURE,
-                        "texture.dirt_path"),
-                validateTexture(resourceManager, rules.textureDirtPathSide(),
-                        BetterGrassRules.DIRT_PATH_SIDE_TEXTURE,
-                        "texture.dirt_path_side"),
-                validateTexture(resourceManager,
-                        rules.texture(BetterGrassFamily.FARMLAND),
-                        BetterGrassRules.FARMLAND_TEXTURE,
-                        "texture.farmland"),
-                validateTexture(resourceManager, rules.textureFarmlandSide(),
-                        BetterGrassRules.FARMLAND_SIDE_TEXTURE,
-                        "texture.farmland_side"),
-                validateTexture(resourceManager,
-                        rules.texture(BetterGrassFamily.MYCELIUM),
-                        BetterGrassRules.MYCELIUM_TEXTURE,
-                        "texture.mycelium"),
-                validateTexture(resourceManager,
-                        rules.texture(BetterGrassFamily.PODZOL),
-                        BetterGrassRules.PODZOL_TEXTURE,
-                        "texture.podzol"),
-                validateTexture(resourceManager,
-                        rules.texture(BetterGrassFamily.CRIMSON_NYLIUM),
-                        BetterGrassRules.CRIMSON_NYLIUM_TEXTURE,
-                        "texture.crimson_nylium"),
-                validateTexture(resourceManager,
-                        rules.texture(BetterGrassFamily.WARPED_NYLIUM),
-                        BetterGrassRules.WARPED_NYLIUM_TEXTURE,
-                        "texture.warped_nylium"),
-                validateTexture(resourceManager, rules.textureSnow(),
-                        BetterGrassRules.SNOW_TEXTURE, "texture.snow"));
-    }
-
-    private static NamespaceId validateTexture(ResourceManager resourceManager,
-                                               NamespaceId candidate,
-                                               NamespaceId fallback,
-                                               String key) {
-        if (textureExists(resourceManager, candidate)) {
-            return candidate;
-        }
-        LOGGER.warn("[{}] {}={} does not resolve to a texture; using {}",
-                Constants.MOD_NAME, key, candidate, fallback);
-        return fallback;
-    }
-
-    private static boolean textureExists(ResourceManager resourceManager,
-                                         NamespaceId texture) {
-        Identifier resourceId = Identifier.fromNamespaceAndPath(
-                texture.namespace(), "textures/" + texture.path() + ".png");
-        return resourceManager.getResource(resourceId).isPresent();
-    }
-
-    private static void requestTerrainRebuild() {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.level == null) {
+    /**
+     * Clears candidate analysis counters for a new measured benchmark window.
+     */
+    public static void reset() {
+        if (!ENABLED) {
             return;
         }
-        minecraft.levelRenderer.invalidateCompiledGeometry(
-                minecraft.level,
-                minecraft.options,
-                minecraft.gameRenderer.mainCamera(),
-                minecraft.getBlockColors());
-        LOGGER.info("[{}] requested terrain rebuild after Better Grass reload",
-                Constants.MOD_NAME);
+        ENTRIES.clear();
+    }
+
+    /**
+     * Records one positive CTM candidate lookup.
+     */
+    public static void record(String blockId,
+                              NamespaceId baseSprite,
+                              int face,
+                              CtmCandidateScratch candidates,
+                              boolean resolvedWork) {
+        if (!ENABLED || candidates == null || !candidates.hasWork()) {
+            return;
+        }
+        String key = key(blockId, baseSprite, face,
+                candidates.spriteRules().length,
+                candidates.blockRules().length);
+        String noneLabel = Component.translatable("argus.label.none").getString();
+        ENTRIES.computeIfAbsent(key, ignored -> new Entry(
+                blockId,
+                baseSprite == null ? noneLabel : baseSprite.toString(),
+                faceName(face),
+                candidates.spriteRules(),
+                candidates.blockRules()))
+                .record(candidates.effectiveBlockRuleCount(), resolvedWork);
+    }
+
+    /**
+     * Returns the most frequently used candidate sets.
+     */
+    public static Snapshot[] topSnapshots() {
+        return topSnapshots(Integer.getInteger(
+                "argus.benchmark.ctmCandidateTop", DEFAULT_LIMIT));
+    }
+
+    /**
+     * Returns the most frequently used candidate sets.
+     */
+    public static Snapshot[] topSnapshots(int limit) {
+        if (!ENABLED || limit <= 0 || ENTRIES.isEmpty()) {
+            return new Snapshot[0];
+        }
+        ArrayList<Snapshot> snapshots = new ArrayList<>(ENTRIES.size());
+        for (Entry entry : ENTRIES.values()) {
+            snapshots.add(entry.snapshot());
+        }
+        snapshots.sort((left, right) -> {
+            int byCalls = Long.compare(right.calls(), left.calls());
+            if (byCalls != 0) {
+                return byCalls;
+            }
+            int byRules = Integer.compare(right.totalRules(),
+                    left.totalRules());
+            if (byRules != 0) {
+                return byRules;
+            }
+            return left.key().compareTo(right.key());
+        });
+        int count = Math.min(limit, snapshots.size());
+        Snapshot[] out = new Snapshot[count];
+        for (int i = 0; i < count; i++) {
+            out[i] = snapshots.get(i);
+        }
+        return out;
+    }
+
+    private static String key(String blockId,
+                              NamespaceId baseSprite,
+                              int face,
+                              int spriteRules,
+                              int blockRules) {
+        return (blockId == null ? "<none>" : blockId)
+                + '|'
+                + (baseSprite == null ? "<none>" : baseSprite)
+                + '|'
+                + face
+                + '|'
+                + spriteRules
+                + '|'
+                + blockRules;
+    }
+
+    private static String faceName(int face) {
+        String key = switch (face) {
+            case Faces.DOWN -> "argus.face.down";
+            case Faces.UP -> "argus.face.up";
+            case Faces.NORTH -> "argus.face.north";
+            case Faces.SOUTH -> "argus.face.south";
+            case Faces.WEST -> "argus.face.west";
+            case Faces.EAST -> "argus.face.east";
+            default -> "argus.face.unknown";
+        };
+        return Component.translatable(key).getString();
+    }
+
+    private static String methodSummary(CtmRule[] spriteRules,
+                                        CtmRule[] blockRules) {
+        EnumMap<CtmMethod, Integer> counts = new EnumMap<>(CtmMethod.class);
+        addMethods(counts, spriteRules);
+        addMethods(counts, blockRules);
+        return enumSummary(counts, "argus.ctm.method.");
+    }
+
+    private static void addMethods(EnumMap<CtmMethod, Integer> counts,
+                                   CtmRule[] rules) {
+        for (CtmRule rule : rules) {
+            counts.merge(rule.method(), 1, Integer::sum);
+        }
+    }
+
+    private static String connectivitySummary(CtmRule[] spriteRules,
+                                              CtmRule[] blockRules) {
+        EnumMap<CtmConnectivityProfile, Integer> counts =
+                new EnumMap<>(CtmConnectivityProfile.class);
+        addConnectivity(counts, spriteRules);
+        addConnectivity(counts, blockRules);
+        return enumSummary(counts, "argus.ctm.connectivity.");
+    }
+
+    private static void addConnectivity(
+            EnumMap<CtmConnectivityProfile, Integer> counts,
+            CtmRule[] rules) {
+        for (CtmRule rule : rules) {
+            counts.merge(rule.runtimeProfile().connectivity(), 1,
+                    Integer::sum);
+        }
+    }
+
+    private static String connectSummary(CtmRule[] spriteRules,
+                                         CtmRule[] blockRules) {
+        EnumMap<ConnectMode, Integer> counts = new EnumMap<>(ConnectMode.class);
+        addConnectModes(counts, spriteRules);
+        addConnectModes(counts, blockRules);
+        return enumSummary(counts, "argus.ctm.connect_mode.");
+    }
+
+    private static void addConnectModes(EnumMap<ConnectMode, Integer> counts,
+                                        CtmRule[] rules) {
+        for (CtmRule rule : rules) {
+            counts.merge(rule.connect(), 1, Integer::sum);
+        }
+    }
+
+    private static <E extends Enum<E>> String enumSummary(EnumMap<E, Integer> counts,
+                                                          String translationPrefix) {
+        if (counts.isEmpty()) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder(64);
+        boolean first = true;
+        for (java.util.Map.Entry<E, Integer> entry : counts.entrySet()) {
+            if (!first) {
+                out.append(',');
+            }
+            String key = translationPrefix + entry.getKey().name().toLowerCase(java.util.Locale.ROOT);
+            out.append(Component.translatable(key).getString())
+                    .append(':')
+                    .append(entry.getValue());
+            first = false;
+        }
+        return out.toString();
+    }
+
+    private static int overlayRules(CtmRule[] spriteRules,
+                                    CtmRule[] blockRules) {
+        return overlayRules(spriteRules) + overlayRules(blockRules);
+    }
+
+    private static int overlayRules(CtmRule[] rules) {
+        int count = 0;
+        for (CtmRule rule : rules) {
+            if (rule.runtimeProfile().isOverlay()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static String conditionSummary(CtmRule[] spriteRules,
+                                           CtmRule[] blockRules) {
+        ConditionCounts counts = new ConditionCounts();
+        addConditions(counts, spriteRules);
+        addConditions(counts, blockRules);
+        return counts.summary();
+    }
+
+    private static void addConditions(ConditionCounts counts, CtmRule[] rules) {
+        for (CtmRule rule : rules) {
+            if (!rule.biomes().isEmpty()) {
+                counts.biomes++;
+            }
+            if (rule.heights() != RangeListInt.ALL) {
+                counts.heights++;
+            }
+            if (!rule.connectTiles().isEmpty()) {
+                counts.connectTiles++;
+            }
+            if (!rule.connectBlocks().isEmpty()) {
+                counts.connectBlocks++;
+            }
+            if (!rule.matchTiles().isEmpty()) {
+                counts.matchTiles++;
+            }
+            if (!rule.matchBlocks().isEmpty()) {
+                counts.matchBlocks++;
+            }
+        }
+    }
+
+    private static String firstSource(CtmRule[] spriteRules,
+                                      CtmRule[] blockRules) {
+        if (spriteRules.length != 0) {
+            return spriteRules[0].sourceFile().orElse("");
+        }
+        if (blockRules.length != 0) {
+            return blockRules[0].sourceFile().orElse("");
+        }
+        return "";
+    }
+
+    private static final class Entry {
+        private final String key;
+        private final String blockId;
+        private final String sprite;
+        private final String face;
+        private final int spriteRules;
+        private final int blockRules;
+        private final int overlayRules;
+        private final String methods;
+        private final String connectivity;
+        private final String connectModes;
+        private final String conditions;
+        private final String firstSource;
+        private final LongAdder calls = new LongAdder();
+        private final LongAdder resolvedWorkCalls = new LongAdder();
+        private final LongAdder resolvedNoWorkCalls = new LongAdder();
+        private final LongAdder effectiveBlockRuleTotal = new LongAdder();
+        private final LongAdder zeroEffectiveBlockRuleCalls = new LongAdder();
+        private final AtomicInteger maxEffectiveBlockRules =
+                new AtomicInteger();
+
+        private Entry(String blockId,
+                      String sprite,
+                      String face,
+                      CtmRule[] spriteRules,
+                      CtmRule[] blockRules) {
+            this.key = blockId + "|" + sprite + "|" + face + "|"
+                    + spriteRules.length + "|" + blockRules.length;
+            this.blockId = blockId == null ? "" : blockId;
+            this.sprite = sprite;
+            this.face = face;
+            this.spriteRules = spriteRules.length;
+            this.blockRules = blockRules.length;
+            this.overlayRules = overlayRules(spriteRules, blockRules);
+            this.methods = methodSummary(spriteRules, blockRules);
+            this.connectivity = connectivitySummary(spriteRules, blockRules);
+            this.connectModes = connectSummary(spriteRules, blockRules);
+            this.conditions = conditionSummary(spriteRules, blockRules);
+            this.firstSource = firstSource(spriteRules, blockRules);
+        }
+
+        private void record(int effectiveBlockRules, boolean resolvedWork) {
+            calls.increment();
+            if (resolvedWork) {
+                resolvedWorkCalls.increment();
+            } else {
+                resolvedNoWorkCalls.increment();
+            }
+            effectiveBlockRuleTotal.add(effectiveBlockRules);
+            if (effectiveBlockRules == 0) {
+                zeroEffectiveBlockRuleCalls.increment();
+            }
+            maxEffectiveBlockRules.accumulateAndGet(effectiveBlockRules,
+                    Math::max);
+        }
+
+        private Snapshot snapshot() {
+            int totalRules = spriteRules + blockRules;
+            long callCount = calls.sum();
+            long effectiveTotal = effectiveBlockRuleTotal.sum();
+            return new Snapshot(
+                    key,
+                    callCount,
+                    blockId,
+                    sprite,
+                    face,
+                    spriteRules,
+                    blockRules,
+                    resolvedWorkCalls.sum(),
+                    resolvedNoWorkCalls.sum(),
+                    callCount == 0L
+                            ? 0.0D
+                            : (double) effectiveTotal / callCount,
+                    maxEffectiveBlockRules.get(),
+                    zeroEffectiveBlockRuleCalls.sum(),
+                    totalRules,
+                    overlayRules,
+                    totalRules == 0
+                            ? 0.0D
+                            : (double) overlayRules / totalRules,
+                    methods,
+                    connectivity,
+                    connectModes,
+                    conditions,
+                    firstSource);
+        }
+    }
+
+    private static final class ConditionCounts {
+        private int biomes;
+        private int heights;
+        private int connectTiles;
+        private int connectBlocks;
+        private int matchTiles;
+        private int matchBlocks;
+
+        private String summary() {
+            StringBuilder out = new StringBuilder(80);
+            append(out, "argus.benchmark.condition.biomes", biomes);
+            append(out, "argus.benchmark.condition.heights", heights);
+            append(out, "argus.benchmark.condition.connect_tiles", connectTiles);
+            append(out, "argus.benchmark.condition.connect_blocks", connectBlocks);
+            append(out, "argus.benchmark.condition.match_tiles", matchTiles);
+            append(out, "argus.benchmark.condition.match_blocks", matchBlocks);
+            return out.toString();
+        }
+
+        private static void append(StringBuilder out, String translationKey, int count) {
+            if (count == 0) {
+                return;
+            }
+            if (!out.isEmpty()) {
+                out.append(',');
+            }
+            out.append(Component.translatable(translationKey).getString())
+                    .append(':')
+                    .append(count);
+        }
+    }
+
+    /**
+     * Immutable candidate-analysis row for benchmark reports.
+     */
+    public record Snapshot(
+            String key,
+            long calls,
+            String blockId,
+            String sprite,
+            String face,
+            int spriteRules,
+            int blockRules,
+            long resolvedWorkCalls,
+            long resolvedNoWorkCalls,
+            double averageEffectiveBlockRules,
+            int maxEffectiveBlockRules,
+            long zeroEffectiveBlockRuleCalls,
+            int totalRules,
+            int overlayRules,
+            double overlayShare,
+            String methods,
+            String connectivity,
+            String connectModes,
+            String conditions,
+            String firstSource) {
     }
 }

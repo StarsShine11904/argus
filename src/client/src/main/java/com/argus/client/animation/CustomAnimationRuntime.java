@@ -1,5 +1,6 @@
 package com.argus.client.animation;
 
+import com.argus.Constants;
 import com.argus.client.platform.ClientEnvironment;
 import com.argus.config.ArgusConfig;
 import com.argus.config.ArgusConfigHolder;
@@ -9,6 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.data.AtlasIds;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,8 +106,10 @@ public final class CustomAnimationRuntime {
         if (ClientEnvironment.isModLoaded("animatica")) {
             if (!warnedAnimatica) {
                 warnedAnimatica = true;
-                LOGGER.warn("[Argus] Animatica detected; Argus Custom "
-                        + "Animations runtime is disabled");
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.animation.animatica_conflict",
+                        Constants.MOD_NAME
+                ).getString());
             }
             return;
         }
@@ -169,8 +173,12 @@ public final class CustomAnimationRuntime {
                         level, 0, destX, destY);
             }
         } catch (RuntimeException e) {
-            LOGGER.debug("[Argus] custom animation upload failed for {}: {}",
-                    rule.sourceFile(), e.getMessage());
+            LOGGER.debug("{}", Component.translatable(
+                    "argus.debug.animation.upload_failed",
+                    Constants.MOD_NAME,
+                    rule.sourceFile(),
+                    e.getMessage()
+            ).getString());
         }
     }
 

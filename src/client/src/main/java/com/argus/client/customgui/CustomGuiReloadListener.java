@@ -4,6 +4,7 @@ import com.argus.Constants;
 import com.argus.customgui.CustomGuiParseResult;
 import com.argus.customgui.CustomGuiRuleParser;
 import com.argus.customgui.CustomGuiRuleSet;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
@@ -37,6 +38,19 @@ public final class CustomGuiReloadListener implements PreparableReloadListener {
     public static final Identifier ID =
             Identifier.fromNamespaceAndPath(Constants.MOD_ID,
                     "custom_gui_reload");
+
+    @Override
+    public String getName() {
+        return "Argus Custom GUI Reload Listener";
+    }
+
+    /**
+     * 取得本地化顯示名稱，適合除錯 HUD 或介面顯示。
+     */
+    public Component getDisplayName() {
+        return Component.translatable("argus.reload_listener.custom_gui");
+    }
+
     @Override
     public CompletableFuture<Void> reload(
             SharedState currentReload,
@@ -67,27 +81,42 @@ public final class CustomGuiReloadListener implements PreparableReloadListener {
                 sources.add(new CustomGuiRuleParser.RuleSource(
                         readAll(reader), loc.toString()));
             } catch (Exception e) {
-                LOGGER.warn("[{}] failed to read Custom GUI file {}: {}",
-                        Constants.MOD_NAME, loc, e.getMessage());
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.customgui.reload.read_failed",
+                        Constants.MOD_NAME,
+                        loc,
+                        e.getMessage()
+                ).getString());
             }
         }
         CustomGuiParseResult parsed = CustomGuiRuleParser.parseAll(sources);
         for (CustomGuiParseResult.Error error : parsed.errors()) {
-            LOGGER.warn("[{}] skipping malformed Custom GUI file {}: {}",
-                    Constants.MOD_NAME, error.sourceFile(), error.message());
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.customgui.reload.malformed_file",
+                    Constants.MOD_NAME,
+                    error.sourceFile(),
+                    error.message()
+            ).getString());
         }
         CustomGuiRuleSet ruleSet = CustomGuiRuleSet.of(parsed.rules());
-        LOGGER.info("[{}] Custom GUI reload: {} parsed rules from {} files",
-                Constants.MOD_NAME, ruleSet.all().size(), sources.size());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.customgui.reload.summary",
+                Constants.MOD_NAME,
+                ruleSet.all().size(),
+                sources.size()
+        ).getString());
         return ruleSet;
     }
 
     private static void publish(CustomGuiRuleSet ruleSet) {
         CustomGuiClientSnapshot snapshot = CustomGuiClientSnapshot.from(ruleSet);
         CustomGuiRuntime.replace(snapshot);
-        LOGGER.info("[{}] Custom GUI snapshot installed: {} shared rules, active={}",
-                Constants.MOD_NAME, ruleSet.all().size(),
-                !snapshot.isEmpty());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.customgui.reload.installed",
+                Constants.MOD_NAME,
+                ruleSet.all().size(),
+                !snapshot.isEmpty()
+        ).getString());
     }
 
     private static String readAll(java.io.Reader reader)

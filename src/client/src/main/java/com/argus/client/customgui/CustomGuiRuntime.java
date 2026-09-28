@@ -1,9 +1,13 @@
 package com.argus.client.customgui;
 
-import com.argus.config.ArgusConfigHolder;
+import com.argus.Constants;
 import com.argus.client.platform.ClientEnvironment;
+import com.argus.config.ArgusConfigHolder;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -22,12 +26,16 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class CustomGuiRuntime {
 
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(Constants.MOD_ID + "/custom-gui-runtime");
+
     private static final AtomicReference<CustomGuiClientSnapshot> SNAPSHOT =
             new AtomicReference<>(CustomGuiClientSnapshot.empty());
     private static final AtomicReference<CustomGuiScreenOverrides> ACTIVE =
             new AtomicReference<>(CustomGuiScreenOverrides.EMPTY);
     private static final AtomicReference<String> PENDING_SHULKER_COLOR =
             new AtomicReference<>();
+    private static volatile boolean warnedOptiGui;
 
     private CustomGuiRuntime() {
     }
@@ -103,8 +111,33 @@ public final class CustomGuiRuntime {
         return ACTIVE.get().override(original);
     }
 
+    /**
+     * 取得目前自訂介面（Custom GUI）執行階段狀態的可翻譯描述（適合除錯介面或診斷日誌使用）。
+     */
+    public static Component statusComponent() {
+        if (!ArgusConfigHolder.get().customGuiActive()) {
+            return Component.translatable("argus.status.customgui.disabled_config");
+        }
+        if (ClientEnvironment.isModLoaded("optigui")) {
+            return Component.translatable("argus.status.customgui.disabled_conflict");
+        }
+        return Component.translatable("argus.status.customgui.active", snapshot().ruleSet().all().size());
+    }
+
     private static boolean enabled() {
-        return ArgusConfigHolder.get().customGuiActive()
-                && !ClientEnvironment.isModLoaded("optigui");
+        if (!ArgusConfigHolder.get().customGuiActive()) {
+            return false;
+        }
+        if (ClientEnvironment.isModLoaded("optigui")) {
+            if (!warnedOptiGui) {
+                warnedOptiGui = true;
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.customgui.runtime.optigui_conflict",
+                        Constants.MOD_NAME
+                ).getString());
+            }
+            return false;
+        }
+        return true;
     }
 }

@@ -1,5 +1,6 @@
 package com.argus.client.quad;
 
+import com.argus.Constants;
 import com.argus.client.ctm.MinecraftNeighborView;
 import com.argus.quad.QuadContext;
 import com.argus.quad.QuadDecorators;
@@ -8,51 +9,24 @@ import com.argus.resource.NamespaceId;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.BlockQuadOutput;
+import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.state.BlockState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Fabric-side adapter that wraps a vanilla
- * {@link BlockQuadOutput} and runs every quad through
- * Argus's {@link QuadDecorators} pipeline before the
- * original output is invoked.
- *
- * <h2>Sprite swap</h2>
- *
- * <p>The pipeline may return a replacement
- * {@link QuadRef}; this adapter forwards the replaced
- * {@link BakedQuad} (constructed via
- * {@link QuadRefSpriteSwapper#swap}) to the original
- * output. The wrapper is the only place where the
- * loader-agnostic {@link QuadRef} meets the Minecraft
- * {@code BakedQuad}.
- *
- * <h2>Threading</h2>
- *
- * <p>The wrapper is allocated per
- * {@code ModelBlockRenderer.tesselateBlock} call, which
- * happens on the section-build thread. The wrapper holds
- * a single reference to a per-block
- * {@link MinecraftNeighborView} that the renderer populates
- * lazily.
- *
- * <h2>Performance</h2>
- *
- * <p>The hot path is "no rule matches, no retexture". In
- * that case the pipeline returns the input quad and the
- * adapter forwards it without allocating a new
- * {@code BakedQuad}. The neighbour view is reused across
- * the 6 faces of the same block.
+ * Fabric-side adapter that wraps a vanilla {@link BlockQuadOutput} and runs every
+ * quad through Argus's {@link QuadDecorators} pipeline before the original output is invoked.
  */
 public final class CtmBlockQuadOutput implements BlockQuadOutput {
 
     private static final Logger LOGGER =
-            LoggerFactory.getLogger("argus/ctm-output");
+            LoggerFactory.getLogger(Constants.MOD_ID + "/ctm-output");
 
     private final BlockQuadOutput delegate;
     private final MinecraftNeighborView view;
@@ -70,10 +44,8 @@ public final class CtmBlockQuadOutput implements BlockQuadOutput {
     }
 
     /**
-     * Wraps a vanilla {@link BlockQuadOutput} for one
-     * block. The neighbour view is populated for the 26
-     * surrounding blocks once, then reused for the 6
-     * faces.
+     * Wraps a vanilla {@link BlockQuadOutput} for one block. The neighbour view
+     * is populated for the 26 surrounding blocks once, then reused for the 6 faces.
      */
     public static BlockQuadOutput wrap(BlockQuadOutput delegate,
                                        BlockAndTintGetter level,
@@ -107,11 +79,7 @@ public final class CtmBlockQuadOutput implements BlockQuadOutput {
             return;
         }
         if (result instanceof BakedQuadRef.PendingSwap pending) {
-            // The CtmQuadDecorator's withSprite returned a
-            // PendingSwap marker. Perform the UV re-mapping
-            // using the block atlas.
-            net.minecraft.client.renderer.texture.TextureAtlas atlas =
-                    BlockAtlasProvider.blockAtlas();
+            TextureAtlas atlas = BlockAtlasProvider.blockAtlas();
             if (atlas == null) {
                 delegate.put(x, y, z, quad, instance);
                 return;
@@ -130,14 +98,11 @@ public final class CtmBlockQuadOutput implements BlockQuadOutput {
             delegate.put(x, y, z, swapped.quad(), instance);
             return;
         }
-        // A third-party decorator returned a non-BakedQuad
-        // QuadRef (i.e. an adapter from a different
-        // loader). We cannot honour it on Fabric; pass
-        // through the original quad.
-        LOGGER.debug(
-                "[argus] non-BakedQuadRef returned by decorator; "
-                        + "passing through original quad");
+
+        // A third-party decorator returned an unsupported QuadRef implementation.
+        LOGGER.debug("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.ctm.unsupported_quad_ref").getString());
         delegate.put(x, y, z, quad, instance);
     }
-
 }

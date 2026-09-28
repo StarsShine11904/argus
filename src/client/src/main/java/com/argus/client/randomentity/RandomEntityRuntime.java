@@ -1,20 +1,22 @@
 package com.argus.client.randomentity;
 
+import com.argus.Constants;
+import com.argus.client.platform.ClientEnvironment;
 import com.argus.config.ArgusConfigHolder;
 import com.argus.randomentity.RandomEntityContext;
 import com.argus.resource.NamespaceId;
-import com.argus.client.platform.ClientEnvironment;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.sprite.SpriteId;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.Nameable;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.feline.Cat;
 import net.minecraft.world.entity.animal.equine.Llama;
 import net.minecraft.world.entity.animal.sheep.Sheep;
@@ -25,15 +27,15 @@ import net.minecraft.world.entity.monster.cubemob.Slime;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.DyeColor;
-import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.WoolCarpetBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.biome.Biome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,16 +53,16 @@ import java.util.concurrent.atomic.AtomicReference;
  * loader-agnostic context during entity render-state extraction.
  *
  * <p>Threading: snapshot publication is atomic. Context objects are immutable
- * and stored on per-render states, never in global mutable current-entity
- * fields.
+ * and stored on per-render states, never in global mutable current-entity fields.
  *
  * <p>Performance: HOT PATH in {@link #remap(Identifier, RandomEntityContext)}.
  * The method performs config/compat gates, an empty-snapshot check, and one
  * O(1) rule lookup.
  */
 public final class RandomEntityRuntime {
+
     private static final Logger LOGGER =
-            LoggerFactory.getLogger("argus/random-entities");
+            LoggerFactory.getLogger(Constants.MOD_ID + "/random-entities");
     private static final AtomicReference<RandomEntityClientSnapshot> SNAPSHOT =
             new AtomicReference<>(RandomEntityClientSnapshot.empty());
     private static final AtomicInteger VERSION = new AtomicInteger();
@@ -75,8 +77,7 @@ public final class RandomEntityRuntime {
     }
 
     public static void replace(RandomEntityClientSnapshot snapshot) {
-        SNAPSHOT.set(snapshot == null ? RandomEntityClientSnapshot.empty()
-                : snapshot);
+        SNAPSHOT.set(snapshot == null ? RandomEntityClientSnapshot.empty() : snapshot);
     }
 
     public static RandomEntityContext capture(Entity entity) {
@@ -210,8 +211,7 @@ public final class RandomEntityRuntime {
             path = path.substring(0, path.length() - 4);
         }
         SpriteId out = new SpriteId(sprite.atlasLocation(),
-                Identifier.fromNamespaceAndPath(remapped.getNamespace(),
-                        path));
+                Identifier.fromNamespaceAndPath(remapped.getNamespace(), path));
         debugBlockEntitySprite(sprite, baseTexture, remapped, out);
         return out;
     }
@@ -260,8 +260,9 @@ public final class RandomEntityRuntime {
         if (ClientEnvironment.isModLoaded("entity_texture_features")) {
             if (!warnedEtf) {
                 warnedEtf = true;
-                LOGGER.warn("[Argus] ETF detected; Argus Entity Texture "
-                        + "Features are disabled");
+                LOGGER.warn("[{}] {}",
+                        Constants.MOD_NAME,
+                        Component.translatable("argus.log.random_entities.etf_disabled").getString());
             }
             return false;
         }
@@ -306,8 +307,7 @@ public final class RandomEntityRuntime {
         return new NamespaceId(id.getNamespace(), id.getPath());
     }
 
-    private static BlockState blockState(Entity entity, Level level,
-                                         BlockPos pos) {
+    private static BlockState blockState(Entity entity, Level level, BlockPos pos) {
         if (entity instanceof ItemEntity item
                 && item.getItem().getItem() instanceof BlockItem blockItem) {
             return blockItem.getBlock().defaultBlockState();
@@ -476,10 +476,12 @@ public final class RandomEntityRuntime {
             return;
         }
         lastBlockEntityDebugNanos = now;
-        LOGGER.info("[Argus] Random Tile Entity sprite remap: atlas={} "
-                        + "sprite={} base={} selected={} remappedSprite={}",
-                original.atlasLocation(), original.texture(), baseTexture,
-                selectedTexture, remapped.texture());
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable(
+                        "argus.log.random_entities.tile_entity_remap_debug",
+                        original.atlasLocation(), original.texture(),
+                        baseTexture, selectedTexture, remapped.texture()).getString());
     }
 
     private record Profession(String name, int level) {

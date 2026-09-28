@@ -5,6 +5,7 @@ import com.argus.client.platform.ClientEnvironment;
 import com.argus.cem.CemModel;
 import com.argus.cem.CemParseResult;
 import com.argus.cem.CemParser;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -61,8 +62,12 @@ public final class CemReloadListener
                         id.getNamespace() + ":" + id.getPath(),
                         readAll(reader)));
             } catch (Exception e) {
-                LOGGER.warn("[{}] failed to read CEM file {}: {}",
-                        Constants.MOD_NAME, id, e.getMessage());
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.cem.read_failed",
+                        Constants.MOD_NAME,
+                        id,
+                        e.getMessage()
+                ).getString());
             }
         }
 
@@ -75,24 +80,36 @@ public final class CemReloadListener
             }
         }
         for (CemParseResult.Error error : result.errors()) {
-            LOGGER.warn("[{}] skipping malformed CEM file {}: {}",
-                    Constants.MOD_NAME, error.sourcePath(), error.message());
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.cem.malformed_file",
+                    Constants.MOD_NAME,
+                    error.sourcePath(),
+                    error.message()
+            ).getString());
         }
-        LOGGER.info("[{}] CEM reload: {} models, {} errors",
-                Constants.MOD_NAME, models.size(), result.errors().size());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.cem.reload_summary",
+                Constants.MOD_NAME,
+                models.size(),
+                result.errors().size()
+        ).getString());
         return new CemRuntime.Snapshot(models);
     }
 
     private static void publish(CemRuntime.Snapshot snapshot) {
         CemRuntime.replace(snapshot);
         if (ClientEnvironment.get().isModLoaded("entity_model_features")) {
-            LOGGER.warn("[{}] EMF detected; CEM snapshot was loaded but "
-                            + "runtime selection is disabled",
-                    Constants.MOD_NAME);
+            LOGGER.warn("{}", Component.translatable(
+                    "argus.warn.cem.emf_conflict",
+                    Constants.MOD_NAME
+            ).getString());
         }
-        LOGGER.info("[{}] CEM snapshot installed: {} models, active={}",
-                Constants.MOD_NAME, snapshot.models().size(),
-                !snapshot.models().isEmpty());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.cem.installed",
+                Constants.MOD_NAME,
+                snapshot.models().size(),
+                !snapshot.models().isEmpty()
+        ).getString());
     }
 
     private static String key(String sourcePath) {

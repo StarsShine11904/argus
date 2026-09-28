@@ -1,158 +1,268 @@
 package com.argus.client.ctm;
 
-import com.argus.ctm.NeighborCache;
-import com.argus.ctm.NeighborView;
+import com.argus.Constants;
+import com.argus.ctm.CtmMaterialTable;
+import com.argus.ctm.CtmRegistry;
+import com.argus.ctm.CtmRule;
+import com.argus.ctm.CtmRuleParser;
+import com.argus.ctm.CtmRuleSet;
+import com.argus.ctm.CtmTileAtlas;
+import com.argus.ctm.CtmTileAtlasEntry;
+import com.argus.ctm.CtmTileResolver;
+import com.argus.platform.Platforms;
 import com.argus.resource.NamespaceId;
-import net.minecraft.client.renderer.block.BlockAndTintGetter;
-import net.minecraft.client.renderer.texture.TextureAtlas;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.core.BlockPos;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.level.block.state.BlockState;
-import org.jspecify.annotations.Nullable;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 /**
- * Fabric-side adapter that fills a {@link NeighborCache} from a
- * Minecraft {@link BlockAndTintGetter} and a {@link TextureAtlas}.
+ * Discovers OptiFine / Continuity CTM {@code .properties} files
+ * across all loaded resource packs and feeds them into the
+ * loader-agnostic {@link CtmRegistry}.
  *
- * <p>This is the only class in the {@code fabric} module's
- * {@code client} source set that knows about Minecraft's renderer.
- * It bridges the loader-agnostic {@link NeighborView} contract to
- * the Mojang-mapped types.
+ * <p>Resource paths scanned:
+ * <ul>
+ *   <li>{@code assets/&lt;ns&gt;/optifine/ctm/*.properties}</li>
+ *   <li>{@code assets/&lt;ns&gt;/continuity/ctm/*.properties}</li>
+ * </ul>
  *
- * <h2>Coordinate model</h2>
+ * <p>This is the only file in the project that knows about the
+ * Minecraft reload-listener API; everything else about CTM lives in
+ * the loader-agnostic {@code shared} module.
  *
- * <p>The 3x3x3 cube is centred on the block being rendered. Cells are
- * addressed by their (dx, dy, dz) offset within {@code {-1, 0, 1}^3}.
- * The {@link NeighborCache} stores them as a flat 27-element array.
+ * <h2>Threading</h2>
  *
- * <h2>Per-face sprites</h2>
+ * <p>The reload is split into two phases by Mojang's reload API: the
+ * {@code prepare} executor does the file I/O and parsing, the
+ * {@code apply} executor (render thread) does the atomic swap into
+ * the registry. Both are called by the engine; we do not need to
+ * synchronise beyond what the engine already provides.
  *
- * <p>The {@link com.argus.ctm.NeighborView#sprite(int, int, int, int)}
- * method takes a face ordinal (DOWN, UP, N, S, W, E). Different faces
- * of the same block can have different rendered sprites (logs, grass,
- * stairs), and the CTM engine cares which sprite is actually
- * rendered. The renderer populates the per-face sprites lazily via
- * {@link #setSpriteForFace} as it iterates the bakes.
+ * <h2>Performance</h2>
+ *
+ * <p>Resource discovery is O(n_files). Parsing each file is
+ * O(file size). The final rule set is built in
+ * {@link CtmRuleSet.Builder} which keeps an insertion-sort
+ * priority; total cost is O(n log n) for n rules across all packs.
  */
-public final class MinecraftNeighborView implements NeighborView {
+public final class CtmReloadListener implements PreparableReloadListener {
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(Constants.MOD_ID + "/ctm-reload");
 
-    private static final int CUBE_SIZE = 27;
-    private static final int FACE_COUNT = 6;
+    private static final String OPTIFINE_CTM = "optifine/ctm";
+    private static final String CONTINUITY_CTM = "continuity/ctm";
 
-    private final BlockAndTintGetter source;
-    private final NeighborCache cache = new NeighborCache();
-    /** Cached Mojang sprites per (cell, face). */
-    private final TextureAtlasSprite @Nullable [] spriteTable =
-            new TextureAtlasSprite[CUBE_SIZE * FACE_COUNT];
-    @Nullable
-    private BlockPos centerPos;
+    public static final Identifier ID =
+            Identifier.fromNamespaceAndPath(Constants.MOD_ID, "ctm_reload");
 
-    public MinecraftNeighborView(BlockAndTintGetter source) {
-        this.source = source;
+    @Override
+    public String getName() {
+        return Component.translatable("argus.reload_listener.ctm").getString();
     }
 
-    /**
-     * Recentre the cache on a new block. Must be called before any
-     * per-cell setSprite calls.
-     */
-    public void reset(BlockPos centerPos) {
-        this.centerPos = centerPos.immutable();
-        this.cache.reset();
-        for (int i = 0; i < spriteTable.length; i++) {
-            spriteTable[i] = null;
-        }
-        BlockState center = this.source.getBlockState(centerPos);
-        this.cache.set(0, 0, 0, blockIdOf(center), center.isSolidRender());
+    @Override
+    public CompletableFuture<Void> reload(
+            SharedState currentReload,
+            Executor taskExecutor,
+            PreparationBarrier preparationBarrier,
+            Executor reloadExecutor) {
+
+        ResourceManager resourceManager = currentReload.resourceManager();
+        return CompletableFuture
+                .supplyAsync(() -> collectRules(resourceManager), taskExecutor)
+                .thenCompose(preparationBarrier::wait)
+                .thenAcceptAsync(
+                        rules -> applyRules(rules, resourceManager),
+                        reloadExecutor);
     }
 
-    /**
-     * Records the rendered sprite of one face of a single cell.
-     * Repeated calls for the same cell and face are last-wins
-     * (so a per-face hook can overwrite the default).
-     */
-    public void setSpriteForFace(int dx, int dy, int dz, int face, TextureAtlasSprite sprite) {
-        spriteTable[spriteIndexOf(dx, dy, dz, face)] = sprite;
+    private List<CtmRuleParser.RuleSource> collectRules(ResourceManager resourceManager) {
+        List<CtmRuleParser.RuleSource> out = new ArrayList<>();
+        scan(resourceManager, OPTIFINE_CTM, out);
+        scan(resourceManager, CONTINUITY_CTM, out);
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.ctm.reload.discovered_files",
+                Constants.MOD_NAME,
+                out.size()
+        ).getString());
+        return out;
     }
 
-    /**
-     * Populates the block-id and full-block flag for one neighbour
-     * cell. Skips the centre cell (which is filled in {@link #reset}).
-     */
-    public void setNeighbourBlock(int dx, int dy, int dz) {
-        if (centerPos == null) {
-            throw new IllegalStateException("reset() must be called first");
-        }
-        BlockPos p = this.centerPos.offset(dx, dy, dz);
-        BlockState state = this.source.getBlockState(p);
-        this.cache.set(dx, dy, dz, blockIdOf(state), state.isSolidRender());
-    }
-
-    /**
-     * Convenience: populate the 26 neighbour cells (skipping the
-     * centre) for the block at the centre position.
-     */
-    public void fillNeighbours() {
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    if (dx == 0 && dy == 0 && dz == 0) continue;
-                    setNeighbourBlock(dx, dy, dz);
+    private void scan(ResourceManager resourceManager, String folder,
+                      List<CtmRuleParser.RuleSource> out) {
+        for (Identifier loc : resourceManager
+                .listResources(folder, p -> p.getPath().endsWith(".properties"))
+                .keySet()) {
+            try {
+                Resource res = resourceManager.getResource(loc).orElse(null);
+                if (res == null) {
+                    continue;
                 }
+                String body;
+                try (var in = res.open();
+                     var reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+                    body = readAll(reader);
+                }
+                String sourceLabel = loc.toString();
+                out.add(new CtmRuleParser.RuleSource(body, sourceLabel));
+            } catch (IOException e) {
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.ctm.reload.read_file_failed",
+                        Constants.MOD_NAME,
+                        loc,
+                        e.getMessage()
+                ).getString());
             }
         }
     }
 
-    public NeighborCache cache() {
-        return this.cache;
+    private void applyRules(List<CtmRuleParser.RuleSource> sources,
+                            ResourceManager resourceManager) {
+        NamespaceId parent = new NamespaceId(Constants.MOD_ID, OPTIFINE_CTM);
+        CtmRuleSet ruleSet = CtmRuleParser.buildRuleSet(sources, parent,
+                (label, message, cause) -> {
+                    if (cause != null && cause.getMessage() != null) {
+                        LOGGER.warn("{}", Component.translatable(
+                                "argus.warn.ctm.reload.malformed_rule_file_with_cause",
+                                Constants.MOD_NAME,
+                                label,
+                                message,
+                                cause.getMessage()
+                        ).getString());
+                    } else {
+                        LOGGER.warn("{}", Component.translatable(
+                                "argus.warn.ctm.reload.malformed_rule_file",
+                                Constants.MOD_NAME,
+                                label,
+                                message
+                        ).getString());
+                    }
+                });
+        CtmRegistry reg = Platforms.get().ctmRegistry();
+        reg.replace(ruleSet);
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.ctm.reload.ruleset_installed",
+                Constants.MOD_NAME,
+                ruleSet.all().size(),
+                sources.size()
+        ).getString());
+
+        buildAndPublishTileAtlas(ruleSet, sources, resourceManager);
     }
 
-    public BlockPos centerPos() {
-        if (centerPos == null) {
-            throw new IllegalStateException("reset() must be called first");
+    private void buildAndPublishTileAtlas(
+            CtmRuleSet ruleSet,
+            List<CtmRuleParser.RuleSource> sources,
+            ResourceManager resourceManager) {
+        java.util.HashMap<String, String> labelByPath =
+                new java.util.HashMap<>();
+        for (CtmRuleParser.RuleSource s : sources) {
+            labelByPath.put(s.sourceLabel(), s.sourceLabel());
         }
-        return centerPos;
-    }
-
-    // --- NeighborView -------------------------------------------------
-
-    @Override
-    public @Nullable NamespaceId sprite(int dx, int dy, int dz, int face) {
-        TextureAtlasSprite s = spriteTable[spriteIndexOf(dx, dy, dz, face)];
-        if (s == null) {
-            return null;
+        java.util.ArrayList<CtmTileAtlasEntry> entries =
+                new java.util.ArrayList<>();
+        int numericTiles = 0;
+        int namedTiles = 0;
+        int generatedFallbackTiles = 0;
+        for (CtmRule rule : ruleSet.all()) {
+            String sourcePath = rule.sourceFile().orElse(null);
+            if (sourcePath == null) {
+                continue;
+            }
+            if (!labelByPath.containsKey(sourcePath)) {
+                labelByPath.put(sourcePath, sourcePath);
+            }
+            String dirPath = CtmTileResolver.propertiesDirectoryPath(sourcePath);
+            int dirColon = dirPath.indexOf(':');
+            String dirNs = dirColon < 0
+                    ? com.argus.resource.NamespaceId.DEFAULT_NAMESPACE
+                    : dirPath.substring(0, dirColon);
+            String dirSlash = dirColon < 0
+                    ? dirPath
+                    : dirPath.substring(dirColon + 1);
+            java.util.function.IntPredicate tileExists = n -> {
+                String tilePath = dirSlash + "/" + n + ".png";
+                Identifier tileId = Identifier.fromNamespaceAndPath(
+                        dirNs, tilePath);
+                return resourceManager.getResource(tileId).isPresent();
+            };
+            try {
+                java.util.List<CtmTileResolver.Resolution> resolutions =
+                        CtmTileResolver.resolve(
+                                rule, sourcePath, tileExists);
+                entries.add(new CtmTileAtlasEntry(rule, resolutions));
+                for (CtmTileResolver.Resolution r : resolutions) {
+                    if (r.needsInjection()) {
+                        numericTiles++;
+                        if (r.resourcePath() == null
+                                && r.fallbackSourceSprite() != null) {
+                            generatedFallbackTiles++;
+                        }
+                    } else if (r.isConcrete()) {
+                        namedTiles++;
+                    }
+                }
+            } catch (RuntimeException e) {
+                LOGGER.warn("{}", Component.translatable(
+                        "argus.warn.ctm.reload.tile_resolution_failed",
+                        Constants.MOD_NAME,
+                        sourcePath,
+                        e.getMessage()
+                ).getString());
+            }
         }
-        return namespaceIdOf(s);
+        CtmTileAtlas atlas = CtmTileAtlas.of(entries);
+        CtmTileAtlas.replace(atlas);
+        CtmMaterialTable materialTable = CtmMaterialTable.of(atlas);
+        CtmMaterialTable.replace(materialTable);
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.ctm.reload.tile_atlas_installed",
+                Constants.MOD_NAME,
+                entries.size(),
+                numericTiles,
+                generatedFallbackTiles,
+                namedTiles,
+                materialTable.size()
+        ).getString());
+        requestTerrainRebuild();
     }
 
-    @Override
-    public String blockId(int dx, int dy, int dz) {
-        return this.cache.blockId(dx, dy, dz);
-    }
-
-    @Override
-    public boolean isFullBlock(int dx, int dy, int dz) {
-        return this.cache.isFullBlock(dx, dy, dz);
-    }
-
-    // --- helpers ------------------------------------------------------
-
-    private static int spriteIndexOf(int dx, int dy, int dz, int face) {
-        int cell = (dx + 1) * 9 + (dy + 1) * 3 + (dz + 1);
-        return cell * FACE_COUNT + face;
-    }
-
-    private static String blockIdOf(BlockState state) {
-        Identifier id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
-                .getKey(state.getBlock());
-        if (id == null) {
-            return null;
+    private void requestTerrainRebuild() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) {
+            return;
         }
-        return id.toString();
+        minecraft.levelRenderer.invalidateCompiledGeometry(
+                minecraft.level,
+                minecraft.options,
+                minecraft.gameRenderer.mainCamera(),
+                minecraft.getBlockColors());
+        LOGGER.info("{}", Component.translatable(
+                "argus.info.ctm.reload.terrain_rebuild_requested",
+                Constants.MOD_NAME
+        ).getString());
     }
 
-    private static NamespaceId namespaceIdOf(TextureAtlasSprite sprite) {
-        Identifier id = sprite.contents().name();
-        return new NamespaceId(id.getNamespace(), id.getPath());
+    private static String readAll(java.io.Reader r) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        char[] buf = new char[1024];
+        int n;
+        while ((n = r.read(buf)) > 0) {
+            sb.append(buf, 0, n);
+        }
+        return sb.toString();
     }
 }

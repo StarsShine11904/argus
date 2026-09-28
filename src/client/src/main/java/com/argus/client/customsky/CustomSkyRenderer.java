@@ -1,15 +1,16 @@
 package com.argus.client.customsky;
 
+import com.argus.customsky.CustomSkyBlendMode;
 import com.argus.customsky.CustomSkyLayer;
 import com.argus.customsky.CustomSkyRotation;
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.BlendFactor;
 import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.BlendFactor;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTextureView;
@@ -18,10 +19,10 @@ import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.renderer.BindGroupLayouts;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.BindGroupLayouts;
 import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ARGB;
 import org.joml.Matrix4f;
@@ -29,6 +30,7 @@ import org.joml.Matrix4fStack;
 import org.joml.Vector4f;
 
 import java.util.EnumMap;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalDouble;
 
@@ -42,9 +44,8 @@ public final class CustomSkyRenderer {
 
     private static final float SIZE = 100.0F;
     private static GpuBuffer cubeBuffer;
-    private static final EnumMap<com.argus.customsky.CustomSkyBlendMode,
-            RenderPipeline> PIPELINES = new EnumMap<>(
-            com.argus.customsky.CustomSkyBlendMode.class);
+    private static final EnumMap<CustomSkyBlendMode, RenderPipeline> PIPELINES =
+            new EnumMap<>(CustomSkyBlendMode.class);
 
     private CustomSkyRenderer() {
     }
@@ -81,7 +82,7 @@ public final class CustomSkyRenderer {
         GpuTextureView depthTexture = target.getDepthTextureView();
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "Argus custom sky",
+                .createRenderPass(() -> Component.translatable("argus.gpu.customsky.render_pass").getString(),
                         colorTexture, Optional.empty(),
                         depthTexture, OptionalDouble.empty())) {
             renderPass.setPipeline(pipeline(layer.rule()));
@@ -93,6 +94,16 @@ public final class CustomSkyRenderer {
             renderPass.setIndexBuffer(indexBuffer, indices.type());
             renderPass.drawIndexed(36, 1, 0, 0, 0);
         }
+    }
+
+    /**
+     * 取得天空混合模式的本地化名稱 Component（適合除錯 HUD 或介面顯示）。
+     */
+    public static Component blendModeDisplayName(CustomSkyBlendMode blendMode) {
+        if (blendMode == null) {
+            return Component.translatable("argus.customsky.blend.unknown");
+        }
+        return Component.translatable("argus.customsky.blend." + blendMode.name().toLowerCase(Locale.ROOT));
     }
 
     private static Vector4f shaderColor(CustomSkyLayer layer, float alpha) {
@@ -112,15 +123,14 @@ public final class CustomSkyRenderer {
                 CustomSkyRenderer::createPipeline);
     }
 
-    private static RenderPipeline createPipeline(
-            com.argus.customsky.CustomSkyBlendMode blendMode) {
+    private static RenderPipeline createPipeline(CustomSkyBlendMode blendMode) {
         RenderPipeline.Builder builder = RenderPipeline.builder()
                 .withBindGroupLayout(BindGroupLayouts.GLOBALS)
                 .withBindGroupLayout(BindGroupLayouts.MATRICES_PROJECTION)
                 .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
                 .withLocation(Identifier.fromNamespaceAndPath("argus",
                         "pipeline/custom_sky_" + blendMode.name()
-                                .toLowerCase(java.util.Locale.ROOT)))
+                                .toLowerCase(Locale.ROOT)))
                 .withVertexShader("core/position_tex_color")
                 .withFragmentShader("core/position_tex_color")
                 .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
@@ -132,8 +142,7 @@ public final class CustomSkyRenderer {
         return builder.build();
     }
 
-    private static BlendFunction blendFunction(
-            com.argus.customsky.CustomSkyBlendMode blendMode) {
+    private static BlendFunction blendFunction(CustomSkyBlendMode blendMode) {
         return switch (blendMode) {
             case ADD -> new BlendFunction(BlendFactor.SRC_ALPHA,
                     BlendFactor.ONE);
@@ -184,7 +193,8 @@ public final class CustomSkyRenderer {
                     SIZE, SIZE, -SIZE, SIZE, SIZE, SIZE, 1, 0);
             try (MeshData mesh = builder.buildOrThrow()) {
                 return RenderSystem.getDevice().createBuffer(
-                        () -> "Argus custom sky cube", 32,
+                        () -> Component.translatable("argus.gpu.customsky.cube_buffer").getString(),
+                        32,
                         mesh.vertexBuffer());
             }
         }

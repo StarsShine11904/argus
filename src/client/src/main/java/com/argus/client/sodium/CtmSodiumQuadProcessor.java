@@ -1,9 +1,10 @@
 package com.argus.client.sodium;
 
-import com.argus.config.ArgusConfigHolder;
+import com.argus.Constants;
 import com.argus.client.benchmark.ArgusBenchmark;
 import com.argus.client.benchmark.CtmCandidateAnalysis;
 import com.argus.client.render.CtmMinecraftNeighborView;
+import com.argus.config.ArgusConfigHolder;
 import com.argus.ctm.CompactCtmTiles;
 import com.argus.ctm.CtmCandidateScratch;
 import com.argus.ctm.CtmMaterialEntry;
@@ -23,6 +24,7 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jspecify.annotations.Nullable;
@@ -36,22 +38,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Sodium realization adapter for Argus's backend-neutral CTM selections.
  *
- * <p>The adapter runs before Sodium shades and buffers a terrain quad. It
- * resolves a shared {@link CtmRenderSelection}, then either remaps the current
- * quad to a replacement atlas sprite or records overlay quads that the mixin
- * will feed back into Sodium's normal quad pipeline.
- *
- * <p>The implementation has no Fabric imports. The only loader-specific piece
- * is the Mixin that calls it from the current Fabric client source set.
- *
- * <h2>Threading</h2>
- *
- * <p>Owned by one Sodium {@code BlockRenderer} instance. The processor caches a
- * neighbour view for the current Sodium level slice and reads immutable CTM
- * registry/material snapshots.
- *
- * <h2>Performance</h2>
- *
  * <p>Performance: HOT PATH. Allocation policy: no allocation on disabled,
  * empty-table, non-full-face, or non-matching quads. Matching quads use
  * null-returning material lookups and a reusable resolver scratch buffer.
@@ -60,7 +46,7 @@ public final class CtmSodiumQuadProcessor {
 
     private static final float FULL_FACE_EPSILON = 0.001F;
     private static final Logger LOGGER =
-            LoggerFactory.getLogger("argus/sodium-ctm");
+            LoggerFactory.getLogger(Constants.MOD_ID + "/sodium-ctm");
     private static final int DEBUG_LOG_LIMIT = 96;
     private static final AtomicInteger DEBUG_LOGS = new AtomicInteger();
     private static final int GLASS_DEBUG_LOG_LIMIT = 512;
@@ -258,8 +244,7 @@ public final class CtmSodiumQuadProcessor {
         }
         if (!selection.hasPrimaryTile() || selection.isPrimaryDefault()) {
             debugSeenQuad(blockId, pos, direction, sourceSprite, selection,
-                    null,
-                    "default-selection");
+                    null, "default-selection");
             return plan.hasOverlays();
         }
         long materialStart = ArgusBenchmark.start();
@@ -301,7 +286,7 @@ public final class CtmSodiumQuadProcessor {
                 plan.clear();
                 if (sameSprite(sourceSprite, target)) {
                     ArgusBenchmark.record(ArgusBenchmark.CTM_MATERIAL,
-                        materialStart);
+                            materialStart);
                     debugSeenQuad(blockId, pos, direction, sourceSprite,
                             selection, null, "compact-same-sprite");
                     return false;
@@ -435,20 +420,17 @@ public final class CtmSodiumQuadProcessor {
         }
         int fullTile = CtmTileResolver.compactFullTileIndex(
                 selection.primaryTileIndex());
-        LOGGER.info("[argus] Sodium compact CTM block={} pos={} face={} "
-                        + "base={} primaryTile={} fullTile={} replacements={} "
-                        + "q0={} q1={} q2={} q3={}",
-                blockId,
-                pos,
-                direction,
-                sourceSprite.contents().name(),
-                selection.primaryTileIndex(),
-                fullTile,
-                plan.replacementCount(),
-                compactDebugSprite(plan, 0),
-                compactDebugSprite(plan, 1),
-                compactDebugSprite(plan, 2),
-                compactDebugSprite(plan, 3));
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.sodium.ctm.compact_plan",
+                        blockId, pos, direction,
+                        sourceSprite.contents().name(),
+                        selection.primaryTileIndex(), fullTile,
+                        plan.replacementCount(),
+                        compactDebugSprite(plan, 0),
+                        compactDebugSprite(plan, 1),
+                        compactDebugSprite(plan, 2),
+                        compactDebugSprite(plan, 3)).getString());
     }
 
     private static void debugGlassCompactPlan(
@@ -466,19 +448,17 @@ public final class CtmSodiumQuadProcessor {
         }
         int fullTile = CtmTileResolver.compactFullTileIndex(
                 selection.primaryTileIndex());
-        LOGGER.info("[argus] Sodium glass compact pos={} face={} "
-                        + "base={} primaryTile={} fullTile={} "
-                        + "replacements={} q0={} q1={} q2={} q3={}",
-                pos,
-                direction,
-                sourceSprite.contents().name(),
-                selection.primaryTileIndex(),
-                fullTile,
-                plan.replacementCount(),
-                compactDebugSprite(plan, 0),
-                compactDebugSprite(plan, 1),
-                compactDebugSprite(plan, 2),
-                compactDebugSprite(plan, 3));
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.sodium.ctm.glass_compact_plan",
+                        pos, direction,
+                        sourceSprite.contents().name(),
+                        selection.primaryTileIndex(), fullTile,
+                        plan.replacementCount(),
+                        compactDebugSprite(plan, 0),
+                        compactDebugSprite(plan, 1),
+                        compactDebugSprite(plan, 2),
+                        compactDebugSprite(plan, 3)).getString());
     }
 
     private static void debugReplacement(String blockId,
@@ -498,14 +478,13 @@ public final class CtmSodiumQuadProcessor {
         if (index >= DEBUG_LOG_LIMIT) {
             return;
         }
-        LOGGER.info("[argus] Sodium CTM replacement block={} pos={} face={} "
-                        + "base={} primaryTile={} target={}",
-                blockId,
-                pos,
-                direction,
-                sourceSprite.contents().name(),
-                selection.primaryTileIndex(),
-                target.contents().name());
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.sodium.ctm.replacement",
+                        blockId, pos, direction,
+                        sourceSprite.contents().name(),
+                        selection.primaryTileIndex(),
+                        target.contents().name()).getString());
     }
 
     private static void debugSeenQuad(String blockId,
@@ -526,38 +505,33 @@ public final class CtmSodiumQuadProcessor {
         if (index >= DEBUG_LOG_LIMIT) {
             return;
         }
+        String ruleSource = selection == null
+                ? "<none>"
+                : selection.rule().sourceFile().orElse("<unknown>");
+
         if (neighborView == null) {
-            LOGGER.info("[argus] Sodium CTM skipped block={} pos={} face={} "
-                            + "base={} reason={} rule={} neighbours=<cached>",
-                    blockId,
-                    pos,
-                    direction,
-                    sourceSprite.contents().name(),
-                    reason,
-                    selection == null
-                            ? "<none>"
-                            : selection.rule().sourceFile().orElse("<unknown>"));
+            LOGGER.info("[{}] {}",
+                    Constants.MOD_NAME,
+                    Component.translatable("argus.log.sodium.ctm.skipped_cached",
+                            blockId, pos, direction,
+                            sourceSprite.contents().name(),
+                            reason, ruleSource).getString());
             return;
         }
-        LOGGER.info("[argus] Sodium CTM skipped block={} pos={} face={} "
-                        + "base={} reason={} rule={} neighbours="
-                        + "W:{} E:{} N:{} S:{} NW:{} NE:{} SW:{} SE:{}",
-                blockId,
-                pos,
-                direction,
-                sourceSprite.contents().name(),
-                reason,
-                selection == null
-                        ? "<none>"
-                        : selection.rule().sourceFile().orElse("<unknown>"),
-                neighborView.blockId(-1, 0, 0),
-                neighborView.blockId(1, 0, 0),
-                neighborView.blockId(0, 0, -1),
-                neighborView.blockId(0, 0, 1),
-                neighborView.blockId(-1, 0, -1),
-                neighborView.blockId(1, 0, -1),
-                neighborView.blockId(-1, 0, 1),
-                neighborView.blockId(1, 0, 1));
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.sodium.ctm.skipped_neighbors",
+                        blockId, pos, direction,
+                        sourceSprite.contents().name(),
+                        reason, ruleSource,
+                        neighborView.blockId(-1, 0, 0),
+                        neighborView.blockId(1, 0, 0),
+                        neighborView.blockId(0, 0, -1),
+                        neighborView.blockId(0, 0, 1),
+                        neighborView.blockId(-1, 0, -1),
+                        neighborView.blockId(1, 0, -1),
+                        neighborView.blockId(-1, 0, 1),
+                        neighborView.blockId(1, 0, 1)).getString());
     }
 
     private static String compactDebugSprite(CtmSodiumQuadPlan plan,
@@ -587,48 +561,36 @@ public final class CtmSodiumQuadProcessor {
         if (index >= GLASS_DEBUG_LOG_LIMIT) {
             return;
         }
+        String targetName = target == null ? "<none>" : target.contents().name().toString();
         if (neighborView == null) {
-            LOGGER.info("[argus] Sodium glass CTM action={} pos={} face={} "
-                            + "cull={} nominal={} light={} renderType={} "
-                            + "base={} primaryTile={} target={} "
-                            + "neighbours=<cached>",
-                    action,
-                    pos,
-                    direction,
-                    quad.getCullFace(),
-                    quad.getNominalFace(),
-                    quad.getLightFace(),
-                    quad.getRenderType(),
-                    sourceSprite.contents().name(),
-                    selection.primaryTileIndex(),
-                    target == null ? "<none>" : target.contents().name());
+            LOGGER.info("[{}] {}",
+                    Constants.MOD_NAME,
+                    Component.translatable("argus.log.sodium.ctm.glass_decision_cached",
+                            action, pos, direction,
+                            quad.getCullFace(), quad.getNominalFace(),
+                            quad.getLightFace(), quad.getRenderType(),
+                            sourceSprite.contents().name(),
+                            selection.primaryTileIndex(), targetName).getString());
             return;
         }
         int[] d = Faces.delta(direction.get3DDataValue());
-        LOGGER.info("[argus] Sodium glass CTM action={} pos={} face={} "
-                        + "cull={} nominal={} light={} renderType={} "
-                        + "base={} primaryTile={} target={} neighbor={} "
-                        + "side0={} side1={} side2={} side3={} "
-                        + "diag0={} diag1={} diag2={} diag3={}",
-                action,
-                pos,
-                direction,
-                quad.getCullFace(),
-                quad.getNominalFace(),
-                quad.getLightFace(),
-                quad.getRenderType(),
-                sourceSprite.contents().name(),
-                selection.primaryTileIndex(),
-                target == null ? "<none>" : target.contents().name(),
-                neighborView.blockId(d[0], d[1], d[2]),
-                localSideBlock(neighborView, direction, 0),
-                localSideBlock(neighborView, direction, 1),
-                localSideBlock(neighborView, direction, 2),
-                localSideBlock(neighborView, direction, 3),
-                localDiagonalBlock(neighborView, direction, 0),
-                localDiagonalBlock(neighborView, direction, 1),
-                localDiagonalBlock(neighborView, direction, 2),
-                localDiagonalBlock(neighborView, direction, 3));
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.sodium.ctm.glass_decision_neighbors",
+                        action, pos, direction,
+                        quad.getCullFace(), quad.getNominalFace(),
+                        quad.getLightFace(), quad.getRenderType(),
+                        sourceSprite.contents().name(),
+                        selection.primaryTileIndex(), targetName,
+                        neighborView.blockId(d[0], d[1], d[2]),
+                        localSideBlock(neighborView, direction, 0),
+                        localSideBlock(neighborView, direction, 1),
+                        localSideBlock(neighborView, direction, 2),
+                        localSideBlock(neighborView, direction, 3),
+                        localDiagonalBlock(neighborView, direction, 0),
+                        localDiagonalBlock(neighborView, direction, 1),
+                        localDiagonalBlock(neighborView, direction, 2),
+                        localDiagonalBlock(neighborView, direction, 3)).getString());
     }
 
     private static void debugGlassEarlySkip(MutableQuadViewImpl quad,
@@ -647,23 +609,16 @@ public final class CtmSodiumQuadProcessor {
         if (index >= GLASS_DEBUG_LOG_LIMIT) {
             return;
         }
-        LOGGER.info("[argus] Sodium glass early-skip block={} pos={} "
-                        + "reason={} cull={} nominal={} light={} "
-                        + "renderType={} base={} bounds=[{}..{}, {}..{}, {}..{}]",
-                blockId,
-                pos,
-                reason,
-                quad.getCullFace(),
-                quad.getNominalFace(),
-                quad.getLightFace(),
-                quad.getRenderType(),
-                sourceSprite.contents().name(),
-                minX(quad),
-                maxX(quad),
-                minY(quad),
-                maxY(quad),
-                minZ(quad),
-                maxZ(quad));
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.sodium.ctm.glass_early_skip",
+                        blockId, pos, reason,
+                        quad.getCullFace(), quad.getNominalFace(),
+                        quad.getLightFace(), quad.getRenderType(),
+                        sourceSprite.contents().name(),
+                        minX(quad), maxX(quad),
+                        minY(quad), maxY(quad),
+                        minZ(quad), maxZ(quad)).getString());
     }
 
     private static boolean isGlassDebugBlock(String blockId) {

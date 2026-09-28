@@ -2,6 +2,7 @@ package com.argus.client.customgui;
 
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.*;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.ChestMenu;
 
 import java.util.HashMap;
@@ -36,12 +37,28 @@ final class CustomGuiScreenClassifier {
         HashMap<String, Integer> ints = new HashMap<>();
         addChestFacts(screen, bools, ints);
         addShulkerFacts(screen, strings);
+
+        String title = screen.getTitle() != null && !screen.getTitle().getString().isEmpty()
+                ? screen.getTitle().getString()
+                : Component.translatable("argus.customgui.title.default").getString();
+
         return new CustomGuiScreenContext(container,
-                screen.getTitle().getString(),
+                title,
                 Integer.MIN_VALUE,
                 bools,
                 strings,
                 ints);
+    }
+
+    /**
+     * 取得特定畫面的容器本地化名稱 Component，適合除錯 HUD 或日誌顯示。
+     */
+    static Component classifiedDisplayName(Screen screen) {
+        if (screen == null) {
+            return Component.translatable("argus.customgui.container.none");
+        }
+        String id = containerId(screen);
+        return CustomGuiClientSnapshot.containerDisplayName(id);
     }
 
     private static String containerId(Screen screen) {

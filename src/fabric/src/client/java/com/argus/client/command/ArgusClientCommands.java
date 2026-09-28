@@ -1,5 +1,6 @@
 package com.argus.client.command;
 
+import com.argus.Constants;
 import com.argus.client.render.CtmMinecraftNeighborView;
 import com.argus.ctm.BlockSpec;
 import com.argus.ctm.CtmMaterialEntry;
@@ -43,26 +44,17 @@ import java.util.Optional;
 /**
  * Registers Argus client-side diagnostic commands.
  *
- * <p>The CTM texture logger inspects the currently loaded client render area
- * and prints the block positions and renderer-visible face sprites for a target
- * block type. It is intentionally a client command because it observes client
- * resource-pack models and atlas sprites, not server gameplay state.
- *
- * <h2>Threading</h2>
- *
- * <p>Commands execute on the client thread. The scan only reads client world
+ * <p>Threading: Commands execute on the client thread. The scan only reads client world
  * and model state.
  *
- * <h2>Performance</h2>
- *
- * <p>Debug-only path. Block scans are bounded by hard work and output limits
+ * <p>Performance: Debug-only path. Block scans are bounded by hard work and output limits
  * so malformed input or common blocks cannot stall the render thread or flood
  * the game log.
  */
 public final class ArgusClientCommands {
 
     private static final Logger LOGGER =
-            LoggerFactory.getLogger("argus/ctm-command");
+            LoggerFactory.getLogger(Constants.MOD_ID + "/ctm-command");
     private static final Direction[] DIRECTIONS = Direction.values();
     private static final int MAX_SCANNED_BLOCKS = 262_144;
     private static final int MAX_LOGGED_BLOCKS = 128;
@@ -103,22 +95,18 @@ public final class ArgusClientCommands {
                                         String blockType) {
         Identifier blockId = parseBlockId(blockType);
         if (blockId == null) {
-            source.sendError(Component.literal(
-                    "[Argus] Invalid block ID: " + blockType));
+            source.sendError(Component.translatable("argus.command.error.invalid_block_id", blockType));
             return 0;
         }
         if (!BuiltInRegistries.BLOCK.containsKey(blockId)) {
-            source.sendError(Component.literal(
-                    "[Argus] Unknown block: " + blockType
-                            + " (resolved as " + blockId + ")"));
+            source.sendError(Component.translatable("argus.command.error.unknown_block", blockType, blockId));
             return 0;
         }
         Block block = BuiltInRegistries.BLOCK.getValue(blockId);
         Minecraft client = source.getClient();
         ClientLevel level = source.getLevel();
         if (client.player == null || level == null) {
-            source.sendError(Component.literal(
-                    "[Argus] No client level/player available"));
+            source.sendError(Component.translatable("argus.command.error.no_level_or_player"));
             return 0;
         }
         int renderDistance = client.options.renderDistance().get();
@@ -134,11 +122,11 @@ public final class ArgusClientCommands {
         boolean limited = false;
         ArrayList<ScanSection> sections = scanSections(level, centerChunkX,
                 centerSectionY, centerChunkZ, renderDistance, minY, maxY);
-        LOGGER.info("[argus] CTM face texture/selection scan begin block={} "
-                        + "center={} renderDistance={} sections={} "
-                        + "scanLimit={} logLimit={}",
-                blockId, center, renderDistance, sections.size(),
-                MAX_SCANNED_BLOCKS, MAX_LOGGED_BLOCKS);
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.command.scan_begin",
+                        blockId, center, renderDistance, sections.size(),
+                        MAX_SCANNED_BLOCKS, MAX_LOGGED_BLOCKS).getString());
         scan:
         for (ScanSection section : sections) {
             int sectionMinX = section.chunkX() << 4;
@@ -161,24 +149,27 @@ public final class ArgusClientCommands {
                             continue;
                         }
                         found++;
-                        LOGGER.info("[argus] CTM face texture/selection block={} "
-                                        + "pos={} state={} faces={}",
-                                blockId,
-                                scratch.pos,
-                                state,
-                                describeFaces(client, level, scratch.pos,
-                                        state, scratch));
+                        LOGGER.info("[{}] {}",
+                                Constants.MOD_NAME,
+                                Component.translatable("argus.log.command.face_scan_result",
+                                        blockId,
+                                        scratch.pos,
+                                        state,
+                                        describeFaces(client, level, scratch.pos,
+                                                state, scratch)).getString());
                     }
                 }
             }
         }
-        LOGGER.info("[argus] CTM face texture/selection scan end block={} "
-                        + "logged={} scanned={} limited={}",
-                blockId, found, scanned, limited);
-        source.sendFeedback(Component.literal(
-                "[Argus] Logged " + found + " " + blockId
-                        + " blocks after scanning " + scanned
-                        + (limited ? " (stopped at safety limit)" : "")));
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.command.scan_end",
+                        blockId, found, scanned, limited).getString());
+
+        Component feedbackMessage = limited
+                ? Component.translatable("argus.command.feedback.logged_blocks_limited", found, blockId, scanned)
+                : Component.translatable("argus.command.feedback.logged_blocks", found, blockId, scanned);
+        source.sendFeedback(feedbackMessage);
         return found;
     }
 
@@ -218,8 +209,7 @@ public final class ArgusClientCommands {
         Minecraft client = source.getClient();
         ClientLevel level = source.getLevel();
         if (client.player == null || level == null) {
-            source.sendError(Component.literal(
-                    "[Argus] No client level/player available"));
+            source.sendError(Component.translatable("argus.command.error.no_level_or_player"));
             return 0;
         }
         BlockPos center = client.player.blockPosition();
@@ -234,12 +224,13 @@ public final class ArgusClientCommands {
         CtmMaterialTable materialTable = CtmMaterialTable.current();
         int foundBlocks = 0;
         int foundFaces = 0;
-        LOGGER.info("[argus] CTM overlay section scan begin section=[{}..{}, "
-                        + "{}..{}, {}..{}] center={}",
-                minX, minX + 15,
-                minY, maxY - 1,
-                minZ, minZ + 15,
-                center);
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.command.overlay_scan_begin",
+                        minX, minX + 15,
+                        minY, maxY - 1,
+                        minZ, minZ + 15,
+                        center).getString());
         for (int y = minY; y < maxY; y++) {
             for (int z = minZ; z < minZ + 16; z++) {
                 for (int x = minX; x < minX + 16; x++) {
@@ -255,12 +246,11 @@ public final class ArgusClientCommands {
                 }
             }
         }
-        LOGGER.info("[argus] CTM overlay section scan end blocks={} faces={}",
-                foundBlocks, foundFaces);
-        source.sendFeedback(Component.literal(
-                "[Argus] Logged " + foundFaces
-                        + " overlay faces on " + foundBlocks
-                        + " blocks in current chunk section"));
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.command.overlay_scan_end",
+                        foundBlocks, foundFaces).getString());
+        source.sendFeedback(Component.translatable("argus.command.feedback.logged_overlays", foundFaces, foundBlocks));
         return foundFaces;
     }
 
@@ -314,15 +304,16 @@ public final class ArgusClientCommands {
                 continue;
             }
             hits++;
-            LOGGER.info("[argus] CTM overlay block={} pos={} face={} "
-                            + "base={} overlays={} neighbours={}",
-                    blockId,
-                    pos,
-                    direction.getName(),
-                    baseSprite,
-                    describeOverlays(selection, materialTable, fallback, pos,
-                            direction),
-                    describeFaceNeighbours(fallback, direction));
+            LOGGER.info("[{}] {}",
+                    Constants.MOD_NAME,
+                    Component.translatable("argus.log.command.overlay_face",
+                            blockId,
+                            pos,
+                            direction.getName(),
+                            baseSprite,
+                            describeOverlays(selection, materialTable, fallback, pos,
+                                    direction),
+                            describeFaceNeighbours(fallback, direction)).getString());
         }
         return hits;
     }

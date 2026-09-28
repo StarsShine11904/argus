@@ -1,160 +1,110 @@
 package com.argus.client.cit;
 
-import com.argus.condition.ConditionContext;
-import com.argus.condition.ConditionKey;
+import com.argus.cit.CitRule;
+import com.argus.cit.CitRuleSet;
 import com.argus.resource.NamespaceId;
-import net.minecraft.core.component.DataComponentType;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.ItemLore;
-import net.minecraft.world.item.enchantment.ItemEnchantments;
+import net.minecraft.world.item.Item;
+
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.Objects;
 
 /**
- * ItemStack-backed {@link ConditionContext} for CIT evaluation.
+ * Fabric-resolved CIT snapshot for hot item-render lookup.
  *
- * <p>Purpose: adapts modern Minecraft components first and keeps raw NBT as a
- * conservative string fallback. The adapter is created only after the
- * per-item prefilter found candidates.
+ * <p>Purpose: converts shared {@link NamespaceId} item ids to actual
+ * Minecraft {@link Item} instances once at reload, then exposes O(1)
+ * identity lookups during rendering.
  *
- * <p>Performance: render-path object, but only allocated for candidate items.
+ * <p>Threading: immutable after construction and published atomically by
+ * {@link CitRuntime}.
+ *
+ * <p>Performance: HOT PATH via {@link #rulesFor(Item)}. It performs one
+ * identity-map lookup and returns the immutable per-item array.
  */
-public final class CitConditionContext implements ConditionContext {
+public final class CitClientSnapshot {
 
-    private final ItemStack stack;
-    private final String hand;
-    private final ItemEnchantments enchantments;
+    private static final CitRule[] EMPTY_RULES = new CitRule[0];
+    private static final CitClientSnapshot EMPTY =
+            new CitClientSnapshot(CitRuleSet.empty(), new IdentityHashMap<>());
 
-    public CitConditionContext(ItemStack stack, String hand) {
-        this.stack = stack;
-        this.hand = hand == null ? "any" : hand;
-        this.enchantments = stack.getEnchantments();
+    private final CitRuleSet ruleSet;
+    private final IdentityHashMap<Item, CitRule[]> byItem;
+
+    private CitClientSnapshot(CitRuleSet ruleSet,
+                              IdentityHashMap<Item, CitRule[]> byItem) {
+        this.ruleSet = Objects.requireNonNull(ruleSet, () ->
+                Component.translatable("argus.error.cit.ruleset_null").getString());
+        this.byItem = new IdentityHashMap<>(byItem);
     }
 
-    @Override
-    public boolean has(ConditionKey key, String qualifier) {
-        return switch (key) {
-            case ITEM_ID, STACK_SIZE, HAND -> true;
-            case DAMAGE, DAMAGE_PERCENT, DAMAGE_MASK ->
-                    stack.isDamageableItem();
-            case ENCHANTMENT_ID, ENCHANTMENT_LEVEL ->
-                    !enchantments.isEmpty();
-            case CUSTOM_NAME -> stack.has(DataComponents.CUSTOM_NAME);
-            case LORE -> stack.has(DataComponents.LORE);
-            case COMPONENT -> componentValue(qualifier) != null;
-            case NBT_RAW -> legacyNbtValue(qualifier) != null;
-            default -> false;
-        };
+    public static CitClientSnapshot empty() {
+        return EMPTY;
     }
 
-    @Override
-    public String stringValue(ConditionKey key, String qualifier) {
-        return switch (key) {
-            case ITEM_ID -> BuiltInRegistries.ITEM.getKey(stack.getItem())
-                    .toString();
-            case HAND -> hand;
-            case CUSTOM_NAME -> componentToString(
-                    stack.get(DataComponents.CUSTOM_NAME));
-            case LORE -> loreToString(stack.get(DataComponents.LORE));
-            case COMPONENT -> componentValue(qualifier);
-            case NBT_RAW -> legacyNbtValue(qualifier);
-            default -> null;
-        };
-    }
-
-    @Override
-    public int intValue(ConditionKey key, String qualifier, int fallback) {
-        return switch (key) {
-            case STACK_SIZE -> stack.getCount();
-            case DAMAGE -> stack.getDamageValue();
-            case DAMAGE_PERCENT -> damagePercent(fallback);
-            case DAMAGE_MASK -> stack.getDamageValue();
-            case ENCHANTMENT_LEVEL -> highestEnchantmentLevel();
-            default -> fallback;
-        };
-    }
-
-    @Override
-    public boolean booleanValue(ConditionKey key,
-                                String qualifier,
-                                boolean fallback) {
-        return fallback;
-    }
-
-    @Override
-    public boolean contains(ConditionKey key,
-                            String qualifier,
-                            NamespaceId value) {
-        if (key == ConditionKey.ITEM_ID) {
-            Identifier itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
-            return itemId != null && itemId.getNamespace()
-                    .equals(value.namespace())
-                    && itemId.getPath().equals(value.path());
+    public static CitClientSnapshot from(CitRuleSet ruleSet) {
+        Objects.requireNonNull(ruleSet, () ->
+                Component.translatable("argus.error.cit.ruleset_null").getString());
+        if (ruleSet.isEmpty()) {
+            return EMPTY;
         }
-        if (key == ConditionKey.ENCHANTMENT_ID) {
-            for (var entry : enchantments.entrySet()) {
-                if (entry.getKey().getRegisteredName()
-                        .equals(value.toString())) {
-                    return true;
-                }
+        IdentityHashMap<Item, CitRule[]> index = new IdentityHashMap<>();
+        for (Map.Entry<NamespaceId, CitRule[]> entry
+                : ruleSet.byItem().entrySet()) {
+            Identifier id = Identifier.fromNamespaceAndPath(
+                    entry.getKey().namespace(), entry.getKey().path());
+            Item item = BuiltInRegistries.ITEM.getValue(id);
+            if (item != null) {
+                index.put(item, entry.getValue());
             }
-            return false;
         }
-        return ConditionContext.super.contains(key, qualifier, value);
+        if (index.isEmpty()) {
+            return EMPTY;
+        }
+        return new CitClientSnapshot(ruleSet, index);
     }
 
-    private int damagePercent(int fallback) {
-        int max = stack.getMaxDamage();
-        if (max <= 0) {
-            return fallback;
-        }
-        return Math.round((stack.getDamageValue() * 100.0F) / max);
+    public CitRuleSet ruleSet() {
+        return ruleSet;
     }
 
-    private int highestEnchantmentLevel() {
-        int highest = 0;
-        for (var entry : enchantments.entrySet()) {
-            highest = Math.max(highest, entry.getIntValue());
-        }
-        return highest;
+    public boolean isEmpty() {
+        return byItem.isEmpty();
     }
 
-    private String componentValue(String qualifier) {
-        if (qualifier == null || qualifier.isBlank()) {
-            return null;
-        }
-        Identifier id = Identifier.tryParse(qualifier);
-        if (id == null) {
-            id = Identifier.fromNamespaceAndPath("minecraft", qualifier);
-        }
-        DataComponentType<?> type =
-                BuiltInRegistries.DATA_COMPONENT_TYPE.getValue(id);
-        if (type == null || !stack.has(type)) {
-            return null;
-        }
-        Object value = stack.get(type);
-        return value == null ? null : value.toString();
+    public int size() {
+        return byItem.size();
     }
 
-    private String legacyNbtValue(String qualifier) {
-        if (qualifier == null) {
-            return null;
+    public CitRule[] rulesFor(Item item) {
+        CitRule[] rules = byItem.get(item);
+        return rules == null ? EMPTY_RULES : rules;
+    }
+
+    /**
+     * 取得特定物品匹配規則數量的本地化描述。
+     */
+    public Component rulesDescription(Item item) {
+        CitRule[] rules = rulesFor(item);
+        if (rules.length == 0) {
+            return Component.translatable("argus.info.cit.item_rules_none", item.getName());
         }
-        return switch (qualifier) {
-            case "display.Name" -> componentToString(
-                    stack.get(DataComponents.CUSTOM_NAME));
-            case "display.Lore" -> loreToString(stack.get(DataComponents.LORE));
-            default -> componentValue(qualifier);
-        };
+        return Component.translatable("argus.info.cit.item_rules_count", item.getName(), rules.length);
     }
 
-    private static String componentToString(Component component) {
-        return component == null ? null : component.getString();
-    }
-
-    private static String loreToString(ItemLore lore) {
-        return lore == null ? null : lore.lines().toString();
+    /**
+     * 取得快照狀態的本地化摘要 Component（適合 Log、F3 或除錯介面使用）。
+     */
+    public Component toComponent() {
+        if (ruleSet.isEmpty()) {
+            return Component.translatable("argus.info.cit.snapshot_empty");
+        }
+        if (byItem.isEmpty()) {
+            return Component.translatable("argus.warn.cit.snapshot_no_registered_items");
+        }
+        return Component.translatable("argus.info.cit.snapshot_summary", byItem.size());
     }
 }

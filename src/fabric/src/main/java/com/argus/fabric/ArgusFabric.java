@@ -3,6 +3,7 @@ package com.argus.fabric;
 import com.argus.Constants;
 import com.argus.platform.Platforms;
 import net.fabricmc.api.ModInitializer;
+import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,17 +18,19 @@ public final class ArgusFabric implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        LOGGER.info("[{}] initialized (common)", Constants.MOD_NAME);
+        LOGGER.info("[{}] {}",
+                Constants.MOD_NAME,
+                Component.translatable("argus.log.common.initialized").getString());
+
         // Phase 4.6: the mod is client-only functional; the
         // dedicated server has no Platform service registered.
         // We log the absence and continue rather than crash.
         Platforms.tryGet().ifPresentOrElse(
-                p -> LOGGER.info("[{}] active loader: {}",
-                        Constants.MOD_NAME, p.id()),
-                () -> LOGGER.info(
-                        "[{}] no Platform implementation on this "
-                                + "environment (server or unsplit jar); "
-                                + "running as a no-op.",
-                        Constants.MOD_NAME));
+                p -> LOGGER.info("[{}] {}",
+                        Constants.MOD_NAME,
+                        Component.translatable("argus.log.common.active_loader", p.id()).getString()),
+                () -> LOGGER.info("[{}] {}",
+                        Constants.MOD_NAME,
+                        Component.translatable("argus.log.common.no_platform").getString()));
     }
 }
